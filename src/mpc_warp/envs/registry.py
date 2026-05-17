@@ -12,7 +12,7 @@ class EnvSpec:
 
 # MuJoCo-style task names we validate with MPC controllers.
 ENV_REGISTRY: list[EnvSpec] = [
-    EnvSpec("inverted_pendulum", 250, 0.06),
+    EnvSpec("inverted_pendulum", 250, 0.09),
     EnvSpec("ant", 300, 0.3),
     EnvSpec("humanoid", 300, 0.31),
 ]

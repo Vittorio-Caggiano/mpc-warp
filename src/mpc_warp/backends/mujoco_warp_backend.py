@@ -21,6 +21,22 @@ class MujocoWarpBackend:
         obs = out[0] if isinstance(out, tuple) else out
         return [float(x) for x in obs]
 
+    def get_state(self) -> dict:
+        if hasattr(self.env, "get_internal_state"):
+            return self.env.get_internal_state()
+        raise NotImplementedError("Environment does not support get_internal_state")
+
+    def set_state(self, snapshot: dict) -> list[float]:
+        if hasattr(self.env, "set_internal_state"):
+            obs = self.env.set_internal_state(snapshot)
+            return [float(x) for x in obs]
+        raise NotImplementedError("Environment does not support set_internal_state")
+
+    def fork_with_state(self, snapshot: dict) -> "MujocoWarpBackend":
+        forked = MujocoWarpBackend(self._env_factory)
+        forked.set_state(snapshot)
+        return forked
+
     def step(self, action: list[float]) -> StepResult:
         out = self.env.step(action)
         if len(out) == 5:
@@ -31,6 +47,3 @@ class MujocoWarpBackend:
         else:
             raise ValueError(f"Unexpected step return length: {len(out)}")
         return StepResult(state=[float(x) for x in obs], reward=float(reward), done=bool(done))
-
-    def clone(self) -> "MujocoWarpBackend":
-        return MujocoWarpBackend(self._env_factory)

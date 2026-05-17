@@ -1,3 +1,15 @@
+Metadata-Version: 2.4
+Name: mpc-warp
+Version: 0.1.0
+Summary: Minimal MPC toolkit using mujoco_warp backend
+Requires-Python: >=3.10
+Description-Content-Type: text/markdown
+Requires-Dist: numpy>=1.24
+Requires-Dist: mujoco>=3.1
+Requires-Dist: mujoco_warp
+Provides-Extra: dev
+Requires-Dist: pytest>=8.0; extra == "dev"
+
 # mpc-warp
 
 Minimal MPC repository with a `mujoco_warp`-style backend interface and a pure-Python MPPI controller.

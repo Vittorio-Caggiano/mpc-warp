@@ -36,13 +36,15 @@ class MPPISolver:
         ]
 
     def command(self, x0: list[float]) -> list[float]:
+        # Use current live simulator state for all sampled rollouts.
+        _ = x0
+        snapshot = self.backend.get_state()
         noises = [self._sample_noise() for _ in range(self.cfg.num_samples)]
         costs = []
         for i in range(self.cfg.num_samples):
             trial = [[a + n for a, n in zip(u, nu)] for u, nu in zip(self.u_nominal, noises[i])]
-            sim = self.backend.clone()
-            sim.reset()
-            costs.append(rollout_cost(sim, x0, trial, self.goal, self.cost_fn))
+            sim = self.backend.fork_with_state(snapshot)
+            costs.append(rollout_cost(sim, trial, self.goal, self.cost_fn))
 
         beta = min(costs)
         temp = max(self.cfg.temperature, 1e-8)

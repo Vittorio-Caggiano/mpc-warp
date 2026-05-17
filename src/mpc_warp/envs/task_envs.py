@@ -20,6 +20,14 @@ class BaseTaskEnv:
         self.obs = [self.rng.uniform(-1.0, 1.0) for _ in range(self.obs_dim)]
         return self.obs, {}
 
+    def get_internal_state(self) -> dict:
+        return {"obs": list(self.obs), "rng_state": self.rng.getstate()}
+
+    def set_internal_state(self, snapshot: dict):
+        self.obs = [float(x) for x in snapshot["obs"]]
+        self.rng.setstate(snapshot["rng_state"])
+        return list(self.obs)
+
     def step(self, action):
         for i in range(self.obs_dim):
             a = action[i % self.act_dim]
