@@ -111,10 +111,12 @@ class Go1Walking(Task):
     def _cost_components(self, data: mujoco.MjData, control: np.ndarray) -> dict[str, float]:
         return {
             "velocity": 1.0 * (self._trunk_velocity_x(data) - self.target_velocity) ** 2,
+            "lateral": 0.5 * float(data.qvel[1]) ** 2,
+            "yaw": 0.5 * float(data.qvel[5]) ** 2,
             "height": 5.0 * (self._trunk_height(data) - self.target_height) ** 2,
             "orient": 3.0 * self._upright_cost(data),
             "pose": 0.1 * float(np.sum((data.qpos[self._joint_qadr] - _STAND_QPOS) ** 2)),
-            "control": 1e-4 * float(np.sum(control**2)),
+            "control": 1e-3 * float(np.sum(control**2)),
         }
 
     def running_cost(self, data: mujoco.MjData, control: np.ndarray) -> float:
@@ -133,8 +135,10 @@ class Go1Walking(Task):
         qpos = qpos.astype(np.float64)
         qvel = qvel.astype(np.float64)
         vel_cost = 1.0 * (qvel[:, 0] - self.target_velocity) ** 2
+        lateral_cost = 0.5 * qvel[:, 1] ** 2
+        yaw_cost = 0.5 * qvel[:, 5] ** 2
         height_cost = 5.0 * (qpos[:, 2] - self.target_height) ** 2
         orient_cost = 3.0 * (1.0 - qpos[:, 3] ** 2)  # 1 - w²
         pose_cost = 0.1 * np.sum((qpos[:, self._joint_qadr] - _STAND_QPOS) ** 2, axis=1)
-        ctrl_cost = 1e-4 * np.sum(ctrl**2, axis=1)
-        return vel_cost + height_cost + orient_cost + pose_cost + ctrl_cost
+        ctrl_cost = 1e-3 * np.sum(ctrl**2, axis=1)
+        return vel_cost + lateral_cost + yaw_cost + height_cost + orient_cost + pose_cost + ctrl_cost

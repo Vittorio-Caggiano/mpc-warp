@@ -20,42 +20,47 @@ class HumanoidStandup(Task):
     """Standup task for the Unitree G1 humanoid."""
 
     def __init__(self) -> None:
-        mj_model = mujoco.MjModel.from_xml_path(
-            str(MODELS_DIR / "g1" / "scene.xml")
-        )
+        mj_model = mujoco.MjModel.from_xml_path(str(MODELS_DIR / "g1" / "scene.xml"))
         super().__init__(mj_model, trace_sites=["imu_in_torso"])
 
         self._orient_adr = int(mj_model.sensor_adr[mj_model.sensor("imu_in_torso_quat").id])
         self._torso_id = mj_model.site("imu_in_torso").id
-        self.target_height = 0.9
         self.qstand = mj_model.keyframe("stand").qpos.copy()
+
+        # Compute target height from the stand keyframe rather than hard-coding.
+        _kd = mujoco.MjData(mj_model)
+        mujoco.mj_resetDataKeyframe(mj_model, _kd, mj_model.keyframe("stand").id)
+        mujoco.mj_forward(mj_model, _kd)
+        self.target_height = float(_kd.site_xpos[self._torso_id, 2])
 
     def _torso_height(self, data: mujoco.MjData) -> float:
         return float(data.site_xpos[self._torso_id, 2])
 
     def _torso_orientation_cost(self, data: mujoco.MjData) -> float:
-        quat = np.array(data.sensordata[self._orient_adr: self._orient_adr + 4])
+        quat = np.array(data.sensordata[self._orient_adr : self._orient_adr + 4])
         upright = np.array([0.0, 0.0, 1.0])
         rotated = _quat_rotate(upright, quat)
-        return float(np.sum(rotated**2))
+        # Measures how far the body z-axis deviates from world-up; 0 when upright.
+        return float((rotated[2] - 1.0) ** 2)
 
     def running_cost(self, data: mujoco.MjData, control: np.ndarray) -> float:
         orientation_cost = self._torso_orientation_cost(data)
         height_cost = (self._torso_height(data) - self.target_height) ** 2
         nominal_cost = float(np.sum((np.array(data.qpos[7:]) - self.qstand[7:]) ** 2))
-        return 10.0 * orientation_cost + 10.0 * height_cost + 0.1 * nominal_cost
+        ctrl_cost = float(np.sum(control**2))
+        return 10.0 * orientation_cost + 10.0 * height_cost + 1.0 * nominal_cost + 1e-3 * ctrl_cost
 
     def terminal_cost(self, data: mujoco.MjData) -> float:
         return self.running_cost(data, np.zeros(self.mj_model.nu))
 
     def batch_running_cost(self, qpos, qvel, ctrl, sensordata, site_xpos, mocap_pos):
         # Vectorised quat rotation: q (N,4), v (3,) -> (N,3)
-        q = sensordata[:, self._orient_adr: self._orient_adr + 4].astype(np.float64)
+        q = sensordata[:, self._orient_adr : self._orient_adr + 4].astype(np.float64)
         upright = np.array([0.0, 0.0, 1.0])
-        k = q[:, 1:]                                   # (N, 3) [x,y,z]
-        t = 2.0 * np.cross(k, upright[None])           # (N, 3)
+        k = q[:, 1:]  # (N, 3) [x,y,z]
+        t = 2.0 * np.cross(k, upright[None])  # (N, 3)
         rotated = upright[None] + q[:, :1] * t + np.cross(k, t)
-        orientation_cost = np.sum(rotated ** 2, axis=1)
+        orientation_cost = (rotated[:, 2] - 1.0) ** 2
 
         height = site_xpos[:, self._torso_id, 2].astype(np.float64)
         height_cost = (height - self.target_height) ** 2
@@ -63,4 +68,6 @@ class HumanoidStandup(Task):
         joints = qpos[:, 7:].astype(np.float64)
         nominal_cost = np.sum((joints - self.qstand[7:]) ** 2, axis=1)
 
-        return 10.0 * orientation_cost + 10.0 * height_cost + 0.1 * nominal_cost
+        ctrl_cost = 1e-3 * np.sum(ctrl.astype(np.float64) ** 2, axis=1)
+
+        return 10.0 * orientation_cost + 10.0 * height_cost + 1.0 * nominal_cost + ctrl_cost
