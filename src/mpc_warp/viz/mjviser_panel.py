@@ -42,7 +42,6 @@ class MppiPanel:
                     uplot.Series(label="total cost", stroke="#e74c3c", width=2),
                 ),
                 title="Running cost",
-                height=160,
             )
             with server.gui.add_folder("Cost terms"):
                 self._terms_html = server.gui.add_html(
@@ -125,7 +124,6 @@ class MppiPanel:
                     data=(t_axis, *[u_nominal[:, i] for i in range(nu)]),
                     series=tuple(series_list),
                     title="Nominal actions over horizon",
-                    height=160,
                 )
         else:
             self._horizon_plot.data = (
