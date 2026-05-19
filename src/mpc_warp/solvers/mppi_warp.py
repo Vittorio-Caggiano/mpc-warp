@@ -8,6 +8,7 @@ Cost evaluation uses a single bulk GPU→CPU transfer per array per timestep
 (via ``task.batch_running_cost``) instead of N individual ``get_data_into``
 calls, which was the dominant bottleneck on GPU.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -26,6 +27,7 @@ class WarpMPPIConfig:
     num_samples: int = 64
     noise_sigma: float = 0.3
     temperature: float = 1.0
+    nominal_return: float = 0.0  # [0, 1): per-step decay of u_nominal toward task.nominal_ctrl()
 
 
 class WarpMPPISolver:
@@ -57,14 +59,15 @@ class WarpMPPISolver:
         # Allocate num_samples parallel worlds on the device (GPU or CPU).
         self.warp_data = mjw.make_data(mjm, nworld=cfg.num_samples)
 
-        self.u_nominal = np.zeros((cfg.horizon, self.nu), dtype=np.float64)
+        nominal_ctrl = task.nominal_ctrl()
+        self.u_nominal = np.tile(nominal_ctrl, (cfg.horizon, 1)).astype(np.float64)
 
         # Diagnostics updated each command() call.
         self.planned_sites: np.ndarray | None = None  # (H, n_sites, 3)
         self.last_cost: float = 0.0
         self.cost_weights: np.ndarray = np.zeros(cfg.num_samples)
         self.last_cost_terms: dict[str, float] = {}
-        self.u_nominal_snapshot: np.ndarray = np.zeros((cfg.horizon, self.nu))
+        self.u_nominal_snapshot: np.ndarray = self.u_nominal.copy()
 
     def command(self, env_data: mujoco.MjData) -> np.ndarray:
         """Compute the next action from the current MjData state.
@@ -75,7 +78,8 @@ class WarpMPPISolver:
         N, H, nu = cfg.num_samples, cfg.horizon, self.nu
 
         # Sample action perturbations: (N, H, nu)
-        noise = self.rng.standard_normal((N, H, nu)) * cfg.noise_sigma
+        sigma = self.task.noise_sigma(cfg.noise_sigma)  # (nu,)
+        noise = self.rng.standard_normal((N, H, nu)) * sigma
         perturbed = np.clip(
             self.u_nominal[None] + noise,
             self.task.u_min,
@@ -111,6 +115,11 @@ class WarpMPPISolver:
         self.u_nominal += (ws[:, None, None] * noise).sum(axis=0)
         self.u_nominal = np.clip(self.u_nominal, self.task.u_min, self.task.u_max)
 
+        # Optional decay toward task nominal to prevent long-run drift.
+        if cfg.nominal_return > 0.0:
+            base = np.tile(self.task.nominal_ctrl(), (H, 1))
+            self.u_nominal = (1.0 - cfg.nominal_return) * self.u_nominal + cfg.nominal_return * base
+
         u0 = self.u_nominal[0].copy()
 
         # Store diagnostics before shifting.
@@ -135,7 +144,7 @@ class WarpMPPISolver:
             self.planned_sites = None
 
         self.u_nominal = np.roll(self.u_nominal, -1, axis=0)
-        self.u_nominal[-1] = 0.0
+        self.u_nominal[-1] = self.task.nominal_ctrl()
         return u0
 
     @property

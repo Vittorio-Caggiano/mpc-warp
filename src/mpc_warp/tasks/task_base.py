@@ -47,15 +47,36 @@ class Task(ABC):
         """
         return {"total": self.running_cost(data, control)}
 
+    def nominal_ctrl(self) -> np.ndarray:
+        """Return a good initial nominal control (gravity compensation or similar).
+
+        Default: zero vector.  Override for tasks where a zero nominal causes
+        immediate collapse (legged robots, humanoids).
+        """
+        return np.zeros(self.mj_model.nu)
+
+    def noise_sigma(self, cfg_sigma: float) -> np.ndarray:
+        """Per-actuator noise sigma for MPPI exploration.
+
+        Default: uniform cfg_sigma.  Override for tasks with physical-unit actuators
+        where a fixed sigma would be too small or too large.
+        """
+        return np.full(self.mj_model.nu, cfg_sigma)
+
+    def reset_data(self, data: mujoco.MjData) -> None:
+        """Reset data to the task's initial state.  Override for custom starts."""
+        mujoco.mj_resetData(self.mj_model, data)
+        mujoco.mj_forward(self.mj_model, data)
+
     def batch_running_cost(
         self,
-        qpos: np.ndarray,       # (N, nq)  float32
-        qvel: np.ndarray,       # (N, nv)  float32
-        ctrl: np.ndarray,       # (N, nu)  float64 perturbed controls
-        sensordata: np.ndarray, # (N, nsensordata) float32
+        qpos: np.ndarray,  # (N, nq)  float32
+        qvel: np.ndarray,  # (N, nv)  float32
+        ctrl: np.ndarray,  # (N, nu)  float64 perturbed controls
+        sensordata: np.ndarray,  # (N, nsensordata) float32
         site_xpos: np.ndarray,  # (N, nsite, 3) float32
         mocap_pos: np.ndarray,  # (N, nmocap, 3) float32
-    ) -> np.ndarray:            # (N,) float64
+    ) -> np.ndarray:  # (N,) float64
         """Vectorised running cost over N parallel worlds (bulk GPU→CPU transfer path).
 
         Default: slow loop over running_cost() via a shared MjData proxy.

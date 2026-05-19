@@ -11,6 +11,7 @@ Usage:
     uv run mjpython examples/run_mujoco_task.py walker   --viewer both   --render
     uv run python   examples/run_mujoco_task.py go1_walking --viewer mjviser --render
 """
+
 from __future__ import annotations
 
 import argparse
@@ -21,15 +22,20 @@ import numpy as np
 
 from mpc_warp.envs.mujoco_env import MujocoTaskEnv
 from mpc_warp.solvers.mppi_warp import WarpMPPIConfig, WarpMPPISolver
-from mpc_warp.tasks import (CartPole, Crane, DoubleCartPole, Go1Walking,
-                            HumanoidStandup, Particle, Pendulum,
-                            TrajectoryTask, Walker)
-from mpc_warp.tasks.utils.go1_trot_reference import \
-    DEFAULT_OUT as _GO1_TROT_NPZ
-from mpc_warp.tasks.utils.go1_trot_reference import \
-    JOINT_NAMES as _GO1_JOINT_NAMES
-from mpc_warp.tasks.utils.go1_trot_reference import \
-    generate as _generate_go1_trot
+from mpc_warp.tasks import (
+    CartPole,
+    Crane,
+    DoubleCartPole,
+    Go1Walking,
+    HumanoidStandup,
+    Particle,
+    Pendulum,
+    TrajectoryTask,
+    Walker,
+)
+from mpc_warp.tasks.utils.go1_trot_reference import DEFAULT_OUT as _GO1_TROT_NPZ
+from mpc_warp.tasks.utils.go1_trot_reference import JOINT_NAMES as _GO1_JOINT_NAMES
+from mpc_warp.tasks.utils.go1_trot_reference import generate as _generate_go1_trot
 
 
 def _make_go1_trajectory() -> TrajectoryTask:
@@ -52,37 +58,38 @@ def _make_go1_trajectory() -> TrajectoryTask:
 
 
 TASKS = {
-    "pendulum":           Pendulum,
-    "cart_pole":          CartPole,
-    "double_cart_pole":   DoubleCartPole,
-    "particle":           Particle,
-    "walker":             Walker,
-    "crane":              Crane,
-    "humanoid_standup":   HumanoidStandup,
-    "go1_walking":        Go1Walking,
-    "go1_trot":           _make_go1_trajectory,   # factory, not a class
+    "pendulum": Pendulum,
+    "cart_pole": CartPole,
+    "double_cart_pole": DoubleCartPole,
+    "particle": Particle,
+    "walker": Walker,
+    "crane": Crane,
+    "humanoid_standup": HumanoidStandup,
+    "go1_walking": Go1Walking,
+    "go1_trot": _make_go1_trajectory,  # factory, not a class
 }
 
 CONFIGS: dict[str, dict] = {
-    "pendulum":         {"horizon": 16, "num_samples": 128, "noise_sigma": 0.5,  "temperature": 0.1},
-    "cart_pole":        {"horizon": 20, "num_samples": 128, "noise_sigma": 0.3,  "temperature": 0.1},
-    "double_cart_pole": {"horizon": 20, "num_samples": 128, "noise_sigma": 0.3,  "temperature": 0.1},
-    "particle":         {"horizon": 12, "num_samples": 64,  "noise_sigma": 0.3,  "temperature": 0.5},
-    "walker":           {"horizon": 16, "num_samples": 128, "noise_sigma": 0.3,  "temperature": 0.5},
-    "crane":            {"horizon": 16, "num_samples": 64,  "noise_sigma": 0.05, "temperature": 0.5},
-    "humanoid_standup": {"horizon": 12, "num_samples": 64,  "noise_sigma": 0.1,  "temperature": 0.5},
-    "go1_walking":      {"horizon": 12, "num_samples": 64,  "noise_sigma": 2.0,  "temperature": 0.5},
-    "go1_trot":         {"horizon": 12, "num_samples": 64,  "noise_sigma": 2.0,  "temperature": 0.5},
+    "pendulum": {"horizon": 16, "num_samples": 128, "noise_sigma": 0.5, "temperature": 0.1},
+    "cart_pole": {"horizon": 20, "num_samples": 128, "noise_sigma": 0.3, "temperature": 0.1},
+    "double_cart_pole": {"horizon": 20, "num_samples": 128, "noise_sigma": 0.3, "temperature": 0.1},
+    "particle": {"horizon": 12, "num_samples": 64, "noise_sigma": 0.3, "temperature": 0.5},
+    "walker": {"horizon": 16, "num_samples": 128, "noise_sigma": 0.3, "temperature": 0.5},
+    "crane": {"horizon": 16, "num_samples": 64, "noise_sigma": 0.05, "temperature": 0.5},
+    "humanoid_standup": {"horizon": 20, "num_samples": 256, "noise_sigma": 0.3, "temperature": 0.1, "nominal_return": 0.1},
+    "go1_walking": {"horizon": 30, "num_samples": 256, "noise_sigma": 0.3, "temperature": 0.1},
+    "go1_trot": {"horizon": 30, "num_samples": 256, "noise_sigma": 0.3, "temperature": 0.1},
 }
 
 
 # ── viewer mode helpers ────────────────────────────────────────────────────────
 
+
 def _run_mujoco_viewer(
     task_name: str,
     max_steps: int,
     num_samples: int | None,
-    mjviser_panel=None,          # optional MppiPanel for "both" mode
+    mjviser_panel=None,  # optional MppiPanel for "both" mode
 ) -> None:
     """Native mujoco.viewer loop (requires mjpython on macOS with --render)."""
     import mujoco.viewer
@@ -136,8 +143,7 @@ def _run_mujoco_viewer(
 
             if mjviser_panel is not None:
                 _act_names = [
-                    mujoco.mj_id2name(task.mj_model, mujoco.mjtObj.mjOBJ_ACTUATOR, i)
-                    or f"a{i}"
+                    mujoco.mj_id2name(task.mj_model, mujoco.mjtObj.mjOBJ_ACTUATOR, i) or f"a{i}"
                     for i in range(task.mj_model.nu)
                 ]
                 mjviser_panel.update(
@@ -172,17 +178,11 @@ def _run_mjviser(task_name: str, max_steps: int, num_samples: int | None) -> Non
 
     cfg = _make_cfg(task_name, num_samples, render=True)
     solver = WarpMPPISolver(task, WarpMPPIConfig(**cfg), seed=0)
-    print(
-        f"{task_name} [mjviser/{solver.device}]: "
-        f"horizon={cfg['horizon']} samples={cfg['num_samples']}"
-    )
+    print(f"{task_name} [mjviser/{solver.device}]: horizon={cfg['horizon']} samples={cfg['num_samples']}")
 
     server = viser.ViserServer()
 
-    act_names = [
-        mujoco.mj_id2name(task.mj_model, mujoco.mjtObj.mjOBJ_ACTUATOR, i) or f"a{i}"
-        for i in range(task.mj_model.nu)
-    ]
+    act_names = [mujoco.mj_id2name(task.mj_model, mujoco.mjtObj.mjOBJ_ACTUATOR, i) or f"a{i}" for i in range(task.mj_model.nu)]
     panel = MppiPanel(server, task.mj_model.nu, act_names)
 
     scene = ViserMujocoScene(server, task.mj_model, num_envs=1)
@@ -212,10 +212,8 @@ def _run_mjviser(task_name: str, max_steps: int, num_samples: int | None) -> Non
             if _ref_cloud is not None:
                 window = task.ref_positions_window(solver.cfg.horizon)
                 if window is not None:
-                    _ref_cloud.points  = window.astype(np.float32)
-                    _ref_cloud.colors  = np.tile(
-                        [1.0, 0.55, 0.0], (len(window), 1)
-                    ).astype(np.float32)
+                    _ref_cloud.points = window.astype(np.float32)
+                    _ref_cloud.colors = np.tile([1.0, 0.55, 0.0], (len(window), 1)).astype(np.float32)
             task.advance()
 
         scene.update_from_mjdata(env.data)
@@ -249,8 +247,7 @@ def _run_both(task_name: str, max_steps: int, num_samples: int | None) -> None:
     server = viser.ViserServer()
     task_tmp = TASKS[task_name]()
     act_names = [
-        mujoco.mj_id2name(task_tmp.mj_model, mujoco.mjtObj.mjOBJ_ACTUATOR, i) or f"a{i}"
-        for i in range(task_tmp.mj_model.nu)
+        mujoco.mj_id2name(task_tmp.mj_model, mujoco.mjtObj.mjOBJ_ACTUATOR, i) or f"a{i}" for i in range(task_tmp.mj_model.nu)
     ]
     panel = MppiPanel(server, task_tmp.mj_model.nu, act_names)
     print(f"  Browser panels: http://localhost:{server.get_port()}")
@@ -262,6 +259,7 @@ def _run_both(task_name: str, max_steps: int, num_samples: int | None) -> None:
 
 # ── utilities ─────────────────────────────────────────────────────────────────
 
+
 def _make_cfg(task_name: str, num_samples: int | None, render: bool) -> dict:
     cfg = dict(CONFIGS[task_name])
     if num_samples is not None:
@@ -272,11 +270,15 @@ def _make_cfg(task_name: str, num_samples: int | None, render: bool) -> dict:
 
 
 class _nullctx:
-    def __enter__(self): return self
-    def __exit__(self, *_): pass
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_):
+        pass
 
 
 # ── entry point ───────────────────────────────────────────────────────────────
+
 
 def main() -> int:
     parser = argparse.ArgumentParser()
@@ -292,10 +294,8 @@ def main() -> int:
             "both: native viewer + mjviser panels"
         ),
     )
-    parser.add_argument("--render", action="store_true",
-                        help="Enable viewer (required for mujoco/both modes on macOS)")
-    parser.add_argument("--num-samples", type=int, default=None,
-                        help="Override sample count")
+    parser.add_argument("--render", action="store_true", help="Enable viewer (required for mujoco/both modes on macOS)")
+    parser.add_argument("--num-samples", type=int, default=None, help="Override sample count")
     args = parser.parse_args()
 
     if args.viewer == "mjviser":

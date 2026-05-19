@@ -73,6 +73,9 @@ def _build_go1_model() -> mujoco.MjModel:
             act.ctrllimited = True
             act.ctrlrange[:] = [-35.0, 35.0]
 
+    # mujoco_warp pre-allocates njmax slots; 4 feet × ~17 contacts each needs headroom.
+    spec.njmax = 100
+
     return spec.compile()
 
 
@@ -90,12 +93,34 @@ class Go1Walking(Task):
         # Map joint name → qpos index.
         self._joint_qadr = np.array([int(mj_model.joint(name).qposadr[0]) for name in _HINGE_JOINTS], dtype=int)
 
+        # Pre-compute gravity-compensation torques at the stand pose.
+        _kd = mujoco.MjData(mj_model)
+        self._reset_to_stand(_kd)
+        _kd.qacc[:] = 0.0
+        mujoco.mj_inverse(mj_model, _kd)
+        act_qadr = np.array([mj_model.jnt_dofadr[mj_model.actuator_trnid[i, 0]] for i in range(mj_model.nu)], dtype=int)
+        grav = _kd.qfrc_inverse[act_qadr]
+        self._grav_comp = np.clip(grav, self.u_min, self.u_max)
+
     def _reset_to_stand(self, data: mujoco.MjData) -> None:
         """Set data to a stable standing configuration."""
+        mujoco.mj_resetData(self.mj_model, data)
         data.qpos[0:3] = [0.0, 0.0, 0.278]
         data.qpos[3:7] = [1.0, 0.0, 0.0, 0.0]  # identity quaternion
         data.qpos[self._joint_qadr] = _STAND_QPOS
         mujoco.mj_forward(self.mj_model, data)
+
+    def reset_data(self, data: mujoco.MjData) -> None:
+        self._reset_to_stand(data)
+
+    def nominal_ctrl(self) -> np.ndarray:
+        """Gravity-compensation torques at the stand pose."""
+        return self._grav_comp.copy()
+
+    def noise_sigma(self, cfg_sigma: float) -> np.ndarray:
+        """Scale noise by actuator range: torque actuators need physical-unit exploration."""
+        u_range = np.where(np.isfinite(self.u_max - self.u_min), self.u_max - self.u_min, 2.0)
+        return cfg_sigma * u_range
 
     def _trunk_height(self, data: mujoco.MjData) -> float:
         return float(data.qpos[2])

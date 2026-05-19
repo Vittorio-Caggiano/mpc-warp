@@ -33,6 +33,22 @@ class HumanoidStandup(Task):
         mujoco.mj_forward(mj_model, _kd)
         self.target_height = float(_kd.site_xpos[self._torso_id, 2])
 
+        # The G1 uses position actuators (ctrl = target joint angle); nominal is stand pose.
+        act_qadr = np.array([mj_model.jnt_qposadr[mj_model.actuator_trnid[i, 0]] for i in range(mj_model.nu)], dtype=int)
+        self._stand_ctrl = np.clip(self.qstand[act_qadr], self.u_min, self.u_max)
+
+    def reset_data(self, data: mujoco.MjData) -> None:
+        mujoco.mj_resetDataKeyframe(self.mj_model, data, self.mj_model.keyframe("stand").id)
+        mujoco.mj_forward(self.mj_model, data)
+
+    def nominal_ctrl(self) -> np.ndarray:
+        """Stand-pose joint angles for the position-controlled G1."""
+        return self._stand_ctrl.copy()
+
+    def noise_sigma(self, cfg_sigma: float) -> np.ndarray:
+        """Position-controlled joints: sigma in radians, scaled down to avoid saturating PD."""
+        return np.full(self.mj_model.nu, cfg_sigma * 0.2)
+
     def _torso_height(self, data: mujoco.MjData) -> float:
         return float(data.site_xpos[self._torso_id, 2])
 
@@ -47,8 +63,9 @@ class HumanoidStandup(Task):
         orientation_cost = self._torso_orientation_cost(data)
         height_cost = (self._torso_height(data) - self.target_height) ** 2
         nominal_cost = float(np.sum((np.array(data.qpos[7:]) - self.qstand[7:]) ** 2))
-        ctrl_cost = float(np.sum(control**2))
-        return 10.0 * orientation_cost + 10.0 * height_cost + 1.0 * nominal_cost + 1e-3 * ctrl_cost
+        # Penalise deviation from stand-pose targets to prevent nominal trajectory drift.
+        ctrl_reg = float(np.sum((control - self._stand_ctrl) ** 2))
+        return 10.0 * orientation_cost + 10.0 * height_cost + 1.0 * nominal_cost + 0.5 * ctrl_reg
 
     def terminal_cost(self, data: mujoco.MjData) -> float:
         return self.running_cost(data, np.zeros(self.mj_model.nu))
@@ -68,6 +85,6 @@ class HumanoidStandup(Task):
         joints = qpos[:, 7:].astype(np.float64)
         nominal_cost = np.sum((joints - self.qstand[7:]) ** 2, axis=1)
 
-        ctrl_cost = 1e-3 * np.sum(ctrl.astype(np.float64) ** 2, axis=1)
+        ctrl_reg = 0.5 * np.sum((ctrl.astype(np.float64) - self._stand_ctrl) ** 2, axis=1)
 
-        return 10.0 * orientation_cost + 10.0 * height_cost + 1.0 * nominal_cost + ctrl_cost
+        return 10.0 * orientation_cost + 10.0 * height_cost + 1.0 * nominal_cost + ctrl_reg

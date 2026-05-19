@@ -27,8 +27,7 @@ class MujocoTaskEnv:
         return list(self.data.qpos) + list(self.data.qvel)
 
     def reset(self, seed: int | None = None) -> tuple[list[float], dict]:
-        mujoco.mj_resetData(self.model, self.data)
-        mujoco.mj_forward(self.model, self.data)
+        self.task.reset_data(self.data)
         return self._obs(), {}
 
     def get_internal_state(self) -> dict:
