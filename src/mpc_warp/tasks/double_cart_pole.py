@@ -33,3 +33,12 @@ class DoubleCartPole(Task):
         centering_cost = 10 * float(data.qpos[0]) ** 2
         velocity_cost = float(np.sum(np.array(data.qvel) ** 2))
         return upright_cost + centering_cost + velocity_cost
+
+    def batch_running_cost(self, qpos, qvel, ctrl, sensordata, site_xpos, mocap_pos):
+        # site_xpos: (N, nsite, 3) — tip is self._tip_id
+        tip = site_xpos[:, self._tip_id, :].astype(np.float64)  # (N, 3)
+        cart_x = qpos[:, 0].astype(np.float64)
+        upright_cost = (tip[:, 2] - 4.0) ** 2 + (tip[:, 0] - cart_x) ** 2
+        vel_cost     = 0.1 * np.sum(qvel[:, 1:].astype(np.float64) ** 2, axis=1)
+        ctrl_cost    = 0.001 * np.sum(ctrl ** 2, axis=1)
+        return upright_cost + vel_cost + ctrl_cost

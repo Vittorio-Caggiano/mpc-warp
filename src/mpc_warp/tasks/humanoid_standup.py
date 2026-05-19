@@ -47,3 +47,20 @@ class HumanoidStandup(Task):
 
     def terminal_cost(self, data: mujoco.MjData) -> float:
         return self.running_cost(data, np.zeros(self.mj_model.nu))
+
+    def batch_running_cost(self, qpos, qvel, ctrl, sensordata, site_xpos, mocap_pos):
+        # Vectorised quat rotation: q (N,4), v (3,) -> (N,3)
+        q = sensordata[:, self._orient_adr: self._orient_adr + 4].astype(np.float64)
+        upright = np.array([0.0, 0.0, 1.0])
+        k = q[:, 1:]                                   # (N, 3) [x,y,z]
+        t = 2.0 * np.cross(k, upright[None])           # (N, 3)
+        rotated = upright[None] + q[:, :1] * t + np.cross(k, t)
+        orientation_cost = np.sum(rotated ** 2, axis=1)
+
+        height = site_xpos[:, self._torso_id, 2].astype(np.float64)
+        height_cost = (height - self.target_height) ** 2
+
+        joints = qpos[:, 7:].astype(np.float64)
+        nominal_cost = np.sum((joints - self.qstand[7:]) ** 2, axis=1)
+
+        return 10.0 * orientation_cost + 10.0 * height_cost + 0.1 * nominal_cost

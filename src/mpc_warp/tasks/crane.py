@@ -24,3 +24,9 @@ class Crane(Task):
 
     def terminal_cost(self, data: mujoco.MjData) -> float:
         return self.running_cost(data, np.zeros(self.mj_model.nu))
+
+    def batch_running_cost(self, qpos, qvel, ctrl, sensordata, site_xpos, mocap_pos):
+        sd  = sensordata.astype(np.float64)
+        pos = sd[:, self._pos_adr: self._pos_adr + 3]
+        vel = sd[:, self._vel_adr: self._vel_adr + 3]
+        return np.sum(pos ** 2, axis=1) + 0.1 * np.sum(vel ** 2, axis=1)

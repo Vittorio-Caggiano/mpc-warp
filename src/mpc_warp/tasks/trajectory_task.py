@@ -190,3 +190,19 @@ class TrajectoryTask(Task):
 
     def terminal_cost(self, data: mujoco.MjData) -> float:
         return self._base.terminal_cost(data) + 5.0 * self._tracking_cost(data)
+
+    def batch_running_cost(self, qpos, qvel, ctrl, sensordata, site_xpos, mocap_pos):
+        base_costs = self._base.batch_running_cost(
+            qpos, qvel, ctrl, sensordata, site_xpos, mocap_pos
+        )
+        ref_q = self.ref_qpos_now.astype(np.float64)
+        if self._joint_qadr is not None:
+            cur_q = qpos[:, self._joint_qadr].astype(np.float64)
+        else:
+            cur_q = qpos[:, : len(ref_q)].astype(np.float64)
+        tracking = self._qpos_w * np.sum((cur_q - ref_q) ** 2, axis=1)
+        if self._ref_qvel is not None and self.ref_qvel_now is not None:
+            ref_v = self.ref_qvel_now.astype(np.float64)
+            cur_v = qvel[:, : len(ref_v)].astype(np.float64)
+            tracking += self._qvel_w * np.sum((cur_v - ref_v) ** 2, axis=1)
+        return base_costs + tracking

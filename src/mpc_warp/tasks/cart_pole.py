@@ -34,3 +34,12 @@ class CartPole(Task):
         centering_cost = float(data.qpos[0]) ** 2
         velocity_cost = 0.01 * float(np.sum(np.array(data.qvel) ** 2))
         return theta_cost + centering_cost + velocity_cost
+
+    def batch_running_cost(self, qpos, qvel, ctrl, sensordata, site_xpos, mocap_pos):
+        qpos = qpos.astype(np.float64); qvel = qvel.astype(np.float64)
+        theta = qpos[:, 1] + math.pi
+        theta_cost     = (np.cos(theta) - 1.0) ** 2 + np.sin(theta) ** 2
+        centering_cost = qpos[:, 0] ** 2
+        vel_cost       = 0.01 * np.sum(qvel ** 2, axis=1)
+        ctrl_cost      = 0.01 * np.sum(ctrl ** 2, axis=1)
+        return theta_cost + centering_cost + vel_cost + ctrl_cost

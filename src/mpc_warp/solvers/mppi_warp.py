@@ -3,6 +3,10 @@
 All ``num_samples`` trajectories are advanced simultaneously via a single
 ``mjw.step`` call on a batched ``nworld=num_samples`` Data object — GPU when
 CUDA is available, compiled Warp CPU kernels otherwise.
+
+Cost evaluation uses a single bulk GPU→CPU transfer per array per timestep
+(via ``task.batch_running_cost``) instead of N individual ``get_data_into``
+calls, which was the dominant bottleneck on GPU.
 """
 from __future__ import annotations
 
@@ -55,15 +59,11 @@ class WarpMPPISolver:
 
         self.u_nominal = np.zeros((cfg.horizon, self.nu), dtype=np.float64)
 
-        # Reusable CPU MjData for cost read-back (avoid per-call allocation).
-        self._readback = mujoco.MjData(mjm)
-
         # Diagnostics updated each command() call.
         self.planned_sites: np.ndarray | None = None  # (H, n_sites, 3)
         self.last_cost: float = 0.0
         self.cost_weights: np.ndarray = np.zeros(cfg.num_samples)
-        self.last_cost_terms: dict[str, float] = {}   # named cost breakdown
-        # u_nominal_snapshot: full nominal sequence (H, nu) before the shift
+        self.last_cost_terms: dict[str, float] = {}
         self.u_nominal_snapshot: np.ndarray = np.zeros((cfg.horizon, self.nu))
 
     def command(self, env_data: mujoco.MjData) -> np.ndarray:
@@ -86,18 +86,21 @@ class WarpMPPISolver:
         self.warp_data = mjw.put_data(self.mjm, env_data, nworld=N)
 
         # Roll out H steps, accumulating cost for each sample.
+        # One bulk GPU→CPU transfer per array per step instead of N individual
+        # get_data_into calls — critical for GPU performance.
         costs = np.zeros(N, dtype=np.float64)
         for t in range(H):
-            # Set ctrl for all worlds at once — shape (N, nu).
             self.warp_data.ctrl.assign(perturbed[:, t, :])
             mjw.step(self.warp_model, self.warp_data)
 
-            # Read back each world and evaluate cost on CPU.
-            for i in range(N):
-                mjw.get_data_into(self._readback, self.mjm, self.warp_data, world_id=i)
-                costs[i] += self.task.running_cost(
-                    self._readback, perturbed[i, t, :].astype(np.float64)
-                )
+            costs += self.task.batch_running_cost(
+                qpos=self.warp_data.qpos.numpy(),
+                qvel=self.warp_data.qvel.numpy(),
+                ctrl=perturbed[:, t, :].astype(np.float64),
+                sensordata=self.warp_data.sensordata.numpy(),
+                site_xpos=self.warp_data.site_xpos.numpy(),
+                mocap_pos=self.warp_data.mocap_pos.numpy(),
+            )
 
         # MPPI importance weights.
         beta = costs.min()

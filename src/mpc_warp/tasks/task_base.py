@@ -46,3 +46,28 @@ class Task(ABC):
         Default: single entry with the total cost.
         """
         return {"total": self.running_cost(data, control)}
+
+    def batch_running_cost(
+        self,
+        qpos: np.ndarray,       # (N, nq)  float32
+        qvel: np.ndarray,       # (N, nv)  float32
+        ctrl: np.ndarray,       # (N, nu)  float64 perturbed controls
+        sensordata: np.ndarray, # (N, nsensordata) float32
+        site_xpos: np.ndarray,  # (N, nsite, 3) float32
+        mocap_pos: np.ndarray,  # (N, nmocap, 3) float32
+    ) -> np.ndarray:            # (N,) float64
+        """Vectorised running cost over N parallel worlds (bulk GPU→CPU transfer path).
+
+        Default: slow loop over running_cost() via a shared MjData proxy.
+        Override with vectorised numpy for full speed.
+        Tasks that read sensordata or site_xpos MUST override this method,
+        because the base proxy does not call mj_forward.
+        """
+        N = qpos.shape[0]
+        costs = np.empty(N, dtype=np.float64)
+        proxy = mujoco.MjData(self.mj_model)
+        for i in range(N):
+            proxy.qpos[:] = qpos[i].astype(np.float64)
+            proxy.qvel[:] = qvel[i].astype(np.float64)
+            costs[i] = self.running_cost(proxy, ctrl[i])
+        return costs

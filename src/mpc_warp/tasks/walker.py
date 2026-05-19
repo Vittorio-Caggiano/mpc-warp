@@ -38,3 +38,14 @@ class Walker(Task):
 
     def running_cost(self, data: mujoco.MjData, control: np.ndarray) -> float:
         return self.terminal_cost(data) + 0.1 * float(np.sum(control**2))
+
+    def batch_running_cost(self, qpos, qvel, ctrl, sensordata, site_xpos, mocap_pos):
+        sd = sensordata.astype(np.float64)
+        height   = sd[:, self._pos_adr + 2]
+        velocity = sd[:, self._vel_adr]
+        zaxis_z  = sd[:, self._zax_adr + 2]
+        height_cost      = (height - self.target_height) ** 2
+        orientation_cost = (zaxis_z - 1.0) ** 2
+        velocity_cost    = (velocity - self.target_velocity) ** 2
+        ctrl_cost        = 0.1 * np.sum(ctrl ** 2, axis=1)
+        return 10.0 * height_cost + 3.0 * orientation_cost + velocity_cost + ctrl_cost

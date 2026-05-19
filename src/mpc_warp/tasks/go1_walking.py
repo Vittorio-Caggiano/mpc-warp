@@ -109,3 +109,12 @@ class Go1Walking(Task):
         height_cost = (self._trunk_height(data) - self.target_height) ** 2
         orient_cost = self._upright_cost(data)
         return 2.0 * vel_cost + 10.0 * height_cost + 5.0 * orient_cost
+
+    def batch_running_cost(self, qpos, qvel, ctrl, sensordata, site_xpos, mocap_pos):
+        qpos = qpos.astype(np.float64); qvel = qvel.astype(np.float64)
+        vel_cost    = 1.0  * (qvel[:, 0] - self.target_velocity) ** 2
+        height_cost = 5.0  * (qpos[:, 2] - self.target_height) ** 2
+        orient_cost = 3.0  * (1.0 - qpos[:, 3] ** 2)           # 1 - w²
+        pose_cost   = 0.1  * np.sum((qpos[:, self._joint_qadr] - _STAND_QPOS) ** 2, axis=1)
+        ctrl_cost   = 1e-4 * np.sum(ctrl ** 2, axis=1)
+        return vel_cost + height_cost + orient_cost + pose_cost + ctrl_cost

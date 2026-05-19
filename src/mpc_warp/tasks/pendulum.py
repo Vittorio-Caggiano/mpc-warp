@@ -36,3 +36,10 @@ class Pendulum(Task):
 
     def terminal_cost(self, data: mujoco.MjData) -> float:
         return self._distance_to_upright(data) + 0.01 * float(data.qvel[0]) ** 2
+
+    def batch_running_cost(self, qpos, qvel, ctrl, sensordata, site_xpos, mocap_pos):
+        theta = qpos[:, 0].astype(np.float64) - math.pi
+        angle_cost = (np.cos(theta) - 1.0) ** 2 + np.sin(theta) ** 2
+        vel_cost   = 0.01 * qvel[:, 0].astype(np.float64) ** 2
+        ctrl_cost  = 0.001 * np.sum(ctrl ** 2, axis=1)
+        return angle_cost + vel_cost + ctrl_cost
