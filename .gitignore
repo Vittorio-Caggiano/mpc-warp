@@ -3,3 +3,7 @@ __pycache__/
 *.egg-info
 */*.egg-info
 .claude/
+build/
+dist/
+*.whl
+.DS_Store
