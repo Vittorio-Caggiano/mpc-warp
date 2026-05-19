@@ -35,7 +35,7 @@ package-dir = {"" = "src"}
 where = ["src"]
 
 [tool.setuptools.package-data]
-"mpc_warp" = ["models/**/*.xml", "models/**/*.stl", "models/**/*.png"]
+"mpc_warp" = ["models/**/*.xml", "models/**/*.stl", "models/**/*.STL", "models/**/*.png"]
 
 [tool.ruff]
 line-length = 128
