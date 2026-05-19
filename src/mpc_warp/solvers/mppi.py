@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 import math
 import random
+from dataclasses import dataclass
 
 from mpc_warp.backends.mujoco_warp_backend import MujocoWarpBackend
 from mpc_warp.core.rollout import rollout_cost
@@ -31,8 +31,7 @@ class MPPISolver:
 
     def _sample_noise(self):
         return [
-            [self.rng.gauss(0.0, self.cfg.noise_sigma) for _ in range(self.cfg.action_dim)]
-            for _ in range(self.cfg.horizon)
+            [self.rng.gauss(0.0, self.cfg.noise_sigma) for _ in range(self.cfg.action_dim)] for _ in range(self.cfg.horizon)
         ]
 
     def command(self, x0: list[float]) -> list[float]:

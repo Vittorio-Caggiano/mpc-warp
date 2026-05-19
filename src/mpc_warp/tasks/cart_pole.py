@@ -12,9 +12,7 @@ class CartPole(Task):
     """Cart-pole swingup."""
 
     def __init__(self) -> None:
-        mj_model = mujoco.MjModel.from_xml_path(
-            str(MODELS_DIR / "cart_pole" / "scene.xml")
-        )
+        mj_model = mujoco.MjModel.from_xml_path(str(MODELS_DIR / "cart_pole" / "scene.xml"))
         super().__init__(mj_model, trace_sites=["tip"])
 
     def _distance_to_upright(self, data: mujoco.MjData) -> float:
@@ -36,10 +34,11 @@ class CartPole(Task):
         return theta_cost + centering_cost + velocity_cost
 
     def batch_running_cost(self, qpos, qvel, ctrl, sensordata, site_xpos, mocap_pos):
-        qpos = qpos.astype(np.float64); qvel = qvel.astype(np.float64)
+        qpos = qpos.astype(np.float64)
+        qvel = qvel.astype(np.float64)
         theta = qpos[:, 1] + math.pi
-        theta_cost     = (np.cos(theta) - 1.0) ** 2 + np.sin(theta) ** 2
+        theta_cost = (np.cos(theta) - 1.0) ** 2 + np.sin(theta) ** 2
         centering_cost = qpos[:, 0] ** 2
-        vel_cost       = 0.01 * np.sum(qvel ** 2, axis=1)
-        ctrl_cost      = 0.01 * np.sum(ctrl ** 2, axis=1)
+        vel_cost = 0.01 * np.sum(qvel**2, axis=1)
+        ctrl_cost = 0.01 * np.sum(ctrl**2, axis=1)
         return theta_cost + centering_cost + vel_cost + ctrl_cost

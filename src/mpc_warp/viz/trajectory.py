@@ -5,6 +5,7 @@ Scalar panels (cost history, cost terms bar chart, action horizon, ESS) use
 viewer.set_figures() with MjvFigure — the same mechanism as mujoco_mpc's simulate.
 Scalar HUD text (cost, ESS) uses viewer.set_texts().
 """
+
 from __future__ import annotations
 
 from collections import deque
@@ -16,8 +17,8 @@ from mpc_warp.tasks.task_base import Task
 
 # Geometry constants
 _SPHERE = mujoco.mjtGeom.mjGEOM_SPHERE
-_LINE   = mujoco.mjtGeom.mjGEOM_LINE
-_BOX    = mujoco.mjtGeom.mjGEOM_BOX
+_LINE = mujoco.mjtGeom.mjGEOM_LINE
+_BOX = mujoco.mjtGeom.mjGEOM_BOX
 
 _IDENTITY_MAT = np.eye(3).flatten()
 
@@ -26,14 +27,14 @@ _FIGURE_MAXPNT = 1000
 
 # Panel colours (RGB, 0-1)
 _COLORS = [
-    (0.9, 0.3, 0.3),   # red
-    (0.3, 0.6, 0.9),   # blue
-    (0.3, 0.9, 0.4),   # green
-    (0.9, 0.7, 0.2),   # amber
-    (0.8, 0.3, 0.9),   # purple
-    (0.9, 0.6, 0.3),   # orange
-    (0.2, 0.9, 0.8),   # teal
-    (0.9, 0.9, 0.3),   # yellow
+    (0.9, 0.3, 0.3),  # red
+    (0.3, 0.6, 0.9),  # blue
+    (0.3, 0.9, 0.4),  # green
+    (0.9, 0.7, 0.2),  # amber
+    (0.8, 0.3, 0.9),  # purple
+    (0.9, 0.6, 0.3),  # orange
+    (0.2, 0.9, 0.8),  # teal
+    (0.9, 0.9, 0.3),  # yellow
 ]
 
 
@@ -41,21 +42,19 @@ def _add_sphere(scn: mujoco.MjvScene, pos: np.ndarray, radius: float, rgba: np.n
     if scn.ngeom >= scn.maxgeom:
         return False
     g = scn.geoms[scn.ngeom]
-    mujoco.mjv_initGeom(g, _SPHERE, np.array([radius, radius, radius]),
-                        pos.astype(np.float64), _IDENTITY_MAT, rgba.astype(np.float32))
+    mujoco.mjv_initGeom(
+        g, _SPHERE, np.array([radius, radius, radius]), pos.astype(np.float64), _IDENTITY_MAT, rgba.astype(np.float32)
+    )
     scn.ngeom += 1
     return True
 
 
-def _add_line(scn: mujoco.MjvScene, a: np.ndarray, b: np.ndarray,
-              width: float, rgba: np.ndarray) -> bool:
+def _add_line(scn: mujoco.MjvScene, a: np.ndarray, b: np.ndarray, width: float, rgba: np.ndarray) -> bool:
     if scn.ngeom >= scn.maxgeom:
         return False
     g = scn.geoms[scn.ngeom]
-    mujoco.mjv_initGeom(g, _LINE, np.zeros(3), np.zeros(3), _IDENTITY_MAT,
-                        rgba.astype(np.float32))
-    mujoco.mjv_connector(g, _LINE, width,
-                         a.astype(np.float64), b.astype(np.float64))
+    mujoco.mjv_initGeom(g, _LINE, np.zeros(3), np.zeros(3), _IDENTITY_MAT, rgba.astype(np.float32))
+    mujoco.mjv_connector(g, _LINE, width, a.astype(np.float64), b.astype(np.float64))
     scn.ngeom += 1
     return True
 
@@ -71,26 +70,23 @@ def _make_figure(title: str, xlabel: str = "step") -> mujoco.MjvFigure:
     return fig
 
 
-def _figure_append(fig: mujoco.MjvFigure, line_idx: int,
-                   x: float, y: float) -> None:
+def _figure_append(fig: mujoco.MjvFigure, line_idx: int, x: float, y: float) -> None:
     """Append a single (x, y) point to a figure line (circular buffer)."""
     n = int(fig.linepnt[line_idx])
     if n >= _FIGURE_MAXPNT:
         # Shift left by one to make room.
-        fig.linedata[line_idx, :2 * (_FIGURE_MAXPNT - 1)] = \
-            fig.linedata[line_idx, 2:2 * _FIGURE_MAXPNT]
+        fig.linedata[line_idx, : 2 * (_FIGURE_MAXPNT - 1)] = fig.linedata[line_idx, 2 : 2 * _FIGURE_MAXPNT]
         n = _FIGURE_MAXPNT - 1
-    fig.linedata[line_idx, 2 * n]     = x
+    fig.linedata[line_idx, 2 * n] = x
     fig.linedata[line_idx, 2 * n + 1] = y
     fig.linepnt[line_idx] = n + 1
 
 
-def _figure_set_line(fig: mujoco.MjvFigure, line_idx: int,
-                     xs: np.ndarray, ys: np.ndarray) -> None:
+def _figure_set_line(fig: mujoco.MjvFigure, line_idx: int, xs: np.ndarray, ys: np.ndarray) -> None:
     """Replace a figure line with new data arrays."""
     n = min(len(xs), _FIGURE_MAXPNT)
     for i in range(n):
-        fig.linedata[line_idx, 2 * i]     = float(xs[i])
+        fig.linedata[line_idx, 2 * i] = float(xs[i])
         fig.linedata[line_idx, 2 * i + 1] = float(ys[i])
     fig.linepnt[line_idx] = n
 
@@ -116,13 +112,10 @@ class TrajectoryViz:
         viewer_ctx.set_texts(viz.build_texts(last_cost, cost_weights))
     """
 
-    def __init__(self, task: Task, max_trace_len: int = 200,
-                 max_cost_history: int = 500) -> None:
+    def __init__(self, task: Task, max_trace_len: int = 200, max_cost_history: int = 500) -> None:
         self._task = task
         n = len(task.trace_site_ids)
-        self._traces: list[deque[np.ndarray]] = [
-            deque(maxlen=max_trace_len) for _ in range(n)
-        ]
+        self._traces: list[deque[np.ndarray]] = [deque(maxlen=max_trace_len) for _ in range(n)]
         self._step = 0
 
         # ── Cost history figure (top-left panel) ─────────────────────────
@@ -184,15 +177,11 @@ class TrajectoryViz:
 
         # ── 2. Cost terms bar chart ───────────────────────────────────────
         if cost_terms:
-            n_terms = len(cost_terms)
-            xs = np.arange(n_terms, dtype=np.float64)
-            ys = np.array(list(cost_terms.values()), dtype=np.float64)
             for ci, (name, val) in enumerate(cost_terms.items()):
                 rgb = _COLORS[ci % len(_COLORS)]
                 self._fig_terms.linergb[ci] = list(rgb)
                 self._fig_terms.linename[ci] = name.encode()[:36]
-                _figure_set_line(self._fig_terms, ci,
-                                 np.array([float(ci)]), np.array([float(val)]))
+                _figure_set_line(self._fig_terms, ci, np.array([float(ci)]), np.array([float(val)]))
 
         # ── 3. Action horizon ─────────────────────────────────────────────
         if u_nominal is not None:
@@ -235,7 +224,7 @@ class TrajectoryViz:
         gridpos=0 → top-left corner of the viewer.
         """
         N = len(cost_weights)
-        ess = 1.0 / float(np.sum(cost_weights ** 2)) if N > 0 else 0.0
+        ess = 1.0 / float(np.sum(cost_weights**2)) if N > 0 else 0.0
         return [
             (None, 0, f"cost  {last_cost:.4f}", f"ESS {ess:.0f}/{N}"),
         ]
@@ -272,16 +261,15 @@ class TrajectoryViz:
 
     def _draw_reference(self, ref_positions: np.ndarray, scn: mujoco.MjvScene) -> None:
         n = len(ref_positions)
-        orange     = np.array([1.0, 0.55, 0.0, 0.9])
+        orange = np.array([1.0, 0.55, 0.0, 0.9])
         orange_dim = np.array([1.0, 0.55, 0.0, 0.35])
         for t in range(n):
-            is_current = (t == 0)
-            r    = 0.035 if is_current else 0.02
+            is_current = t == 0
+            r = 0.035 if is_current else 0.02
             rgba = orange if is_current else orange_dim
             _add_sphere(scn, ref_positions[t], r, rgba)
             if t > 0:
-                _add_line(scn, ref_positions[t - 1], ref_positions[t],
-                          0.004, orange_dim)
+                _add_line(scn, ref_positions[t - 1], ref_positions[t], 0.004, orange_dim)
 
     def _draw_plan(self, planned_sites: np.ndarray, scn: mujoco.MjvScene) -> None:
         H, n_sites, _ = planned_sites.shape
@@ -290,5 +278,4 @@ class TrajectoryViz:
             for t in range(H):
                 _add_sphere(scn, planned_sites[t, k], 0.02, cyan)
                 if t > 0:
-                    _add_line(scn, planned_sites[t - 1, k], planned_sites[t, k],
-                              0.003, cyan)
+                    _add_line(scn, planned_sites[t - 1, k], planned_sites[t, k], 0.003, cyan)

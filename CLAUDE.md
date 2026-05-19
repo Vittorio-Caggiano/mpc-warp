@@ -32,7 +32,7 @@ Prefer targeted, efficient tests over exhaustive edge-case coverage.
 
 ```bash
 uv sync                                      # install dependencies
-uv run pytest -n 8                           # run all tests (parallel)
+uv run pytest -n 8                           # run all tests (parallel, requires pytest-xdist)
 uv run pytest tests/test_solver_smoke.py -q  # single test file
 
 # Headless (no viewer)
@@ -47,7 +47,7 @@ uv run python examples/run_mujoco_task.py pendulum --viewer mjviser --render
 # Both viewers simultaneously (native + browser panels)
 uv run mjpython examples/run_mujoco_task.py walker --viewer both --render
 
-# GO1 quadruped via mjlab model
+# GO1 quadruped
 uv run python examples/run_mujoco_task.py go1_walking --viewer mjviser --render
 
 uv run python examples/run_all_envs.py      # synthetic convergence envs
@@ -57,17 +57,19 @@ uv run python examples/run_all_envs.py      # synthetic convergence envs
 
 ### Primary stack (real MuJoCo physics)
 
-1. **Tasks** (`src/mpc_warp/tasks/`) — `Task` subclasses implementing `running_cost(data, ctrl)` and `terminal_cost(data)` against `mujoco.MjData`.
-   - Models in `src/mpc_warp/models/` (pendulum, cart_pole, double_cart_pole, particle, walker, crane, humanoid_standup/G1)
-   - `Go1Walking` — Unitree GO1 quadruped built dynamically from `mjlab`'s robot XML + floor + torque actuators
-   - `TrajectoryTask` — wraps any base task and adds a reference `(T, nq)` qpos tracking cost; call `.advance()` after each env step
-   - Each task declares `trace_sites` (site names for 3-D trajectory overlay); stored as `self.trace_site_ids`
+1. **Tasks** (`src/mpc_warp/tasks/`) — `Task` subclasses implementing `running_cost(data, ctrl)`, `terminal_cost(data)`, and `batch_running_cost(...)` against `mujoco.MjData` / batched numpy arrays.
+   - Models in `src/mpc_warp/models/` (pendulum, cart_pole, double_cart_pole, particle, walker, crane, humanoid_standup/G1, go1)
+   - `Go1Walking` — Unitree GO1 quadruped built dynamically via `mujoco.MjSpec` from the local `models/go1/go1.xml`; adds a floor and torque actuators at runtime
+   - `TrajectoryTask` — wraps any base task and adds a reference `(T, nq)` qpos tracking cost; call `.advance()` after each env step; loads trajectories from mjlab-format `.npz` files via `TrajectoryTask.from_npz`
+   - Each task declares `trace_sites` (site names for 3-D trajectory overlay); resolved to integer IDs stored as `self.trace_site_ids`
+   - `batch_running_cost(qpos, qvel, ctrl, sensordata, site_xpos, mocap_pos)` — vectorised cost over N worlds using bulk numpy arrays; all built-in tasks implement this; the base class provides a slow per-world fallback loop for custom tasks
 
 2. **MujocoTaskEnv** (`src/mpc_warp/envs/mujoco_env.py`) — wraps a `Task` into `reset/step`. Holds the live `mujoco.MjData` used by both viewers.
 
 3. **WarpMPPISolver** (`src/mpc_warp/solvers/mppi_warp.py`) — primary MPPI solver using mujoco_warp batched rollouts.
    - Each `command(env.data)` call uploads state to N worlds, runs H steps in parallel, weights samples, updates nominal trajectory
-   - Post-command diagnostics: `solver.planned_sites` `(H, n_sites, 3)`, `solver.last_cost`, `solver.cost_weights` `(N,)`
+   - Cost evaluation uses `task.batch_running_cost` with bulk GPU→CPU array transfers (one per array per step) instead of N individual world readbacks
+   - Post-command diagnostics: `solver.planned_sites` `(H, n_sites, 3)`, `solver.last_cost`, `solver.cost_weights` `(N,)`, `solver.last_cost_terms` (named breakdown)
    - GPU (CUDA) when available, CPU Warp kernels otherwise
 
 ### Viewer stack
@@ -81,7 +83,7 @@ uv run python examples/run_all_envs.py      # synthetic convergence envs
   - HUD text: cost + ESS as `mjGEOM_LABEL`
 
 **`--viewer mjviser`** (browser, no `mjpython` needed):
-- `mjviser.ViserMujocoScene` renders the 3-D physics in the browser
+- `mjviser.ViserMujocoScene` renders the 3-D physics in the browser; physics is driven manually with `scene.update_from_mjdata(data)` each step
 - `MppiPanel` (`src/mpc_warp/viz/mjviser_panel.py`) adds viser GUI tabs:
   - Cost history: `add_uplot` time-series chart (update via `handle.data = (x, y)`)
   - ESS: `add_progress_bar` + HTML label
@@ -97,9 +99,25 @@ uv run python examples/run_all_envs.py      # synthetic convergence envs
 - **MPPISolver** (`src/mpc_warp/solvers/mppi.py`) — sequential MPPI for synthetic envs
 - **Registry** (`src/mpc_warp/envs/registry.py`) — `ENV_REGISTRY` iterated by tests and `run_all_envs.py`
 
+### Public API
+
+`import mpc_warp` exposes `MPPIConfig`, `MPPISolver`, `WarpMPPIConfig`, `WarpMPPISolver` at the top level. Tasks are imported from `mpc_warp.tasks`.
+
+### Tests
+
+- `test_import.py` — top-level import smoke test
+- `test_solver_smoke.py` — WarpMPPISolver runs without error on a real task
+- `test_task_solves.py` — all synthetic registry tasks converge under MPPI
+- `test_examples_run.py` — `run_all_envs.py` exits cleanly
+
+### Tutorial
+
+`examples/tutorial_mppi_mjviser.ipynb` — Jupyter/Colab notebook walking through task setup, solver configuration, mjviser browser visualisation, and cost plotting. Compatible with Google Colab (T4 GPU).
+
 ### Key design notes
 
 - `WarpMPPISolver.command` takes `mujoco.MjData` directly so cost functions access full computed quantities (`site_xpos`, `sensordata`)
-- `mjviser.Viewer` owns its own loop; for `mjviser` mode we drive physics manually and call `scene.update_from_mjdata(data)` each step instead of using `Viewer.run()`
-- `Go1Walking` builds its model at runtime via `mujoco.MjSpec` (adds floor + actuators to mjlab's bare robot XML); no scene.xml file
-- `mjlab` provides robot XML paths via e.g. `mjlab.asset_zoo.robots.unitree_go1.go1_constants.GO1_XML`
+- `batch_running_cost` receives raw warp array outputs (float32 numpy); cast to float64 inside the method before arithmetic
+- `Go1Walking` builds its model at runtime via `mujoco.MjSpec`; there is no pre-compiled scene XML for it
+- `TrajectoryTask.from_npz` expects at least `joint_pos` and `joint_vel` keys; optional `body_pos_w` enables 3-D reference trajectory visualisation
+- Requires Python ≥ 3.10

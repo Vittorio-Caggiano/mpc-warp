@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-import numpy as np
 import mujoco
+import numpy as np
 
 from mpc_warp.tasks.task_base import Task
 
@@ -43,12 +43,8 @@ class MujocoTaskEnv:
         self.data.qpos[:] = snapshot["qpos"]
         self.data.qvel[:] = snapshot["qvel"]
         if "mocap_pos" in snapshot and self.model.nmocap > 0:
-            self.data.mocap_pos[:] = np.array(snapshot["mocap_pos"]).reshape(
-                self.model.nmocap, 3
-            )
-            self.data.mocap_quat[:] = np.array(snapshot["mocap_quat"]).reshape(
-                self.model.nmocap, 4
-            )
+            self.data.mocap_pos[:] = np.array(snapshot["mocap_pos"]).reshape(self.model.nmocap, 3)
+            self.data.mocap_quat[:] = np.array(snapshot["mocap_quat"]).reshape(self.model.nmocap, 4)
         mujoco.mj_forward(self.model, self.data)
         return self._obs()
 

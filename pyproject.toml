@@ -19,6 +19,7 @@ dependencies = [
 [dependency-groups]
 dev = [
   "pytest>=8.0",
+  "pytest-xdist>=3.0",
 ]
 
 [tool.pytest.ini_options]
@@ -35,3 +36,10 @@ where = ["src"]
 
 [tool.setuptools.package-data]
 "mpc_warp" = ["models/**/*.xml", "models/**/*.stl", "models/**/*.png"]
+
+[tool.ruff]
+line-length = 128
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I"]
+ignore = ["E741"]  # ambiguous variable names (l, O, I) — common in math code

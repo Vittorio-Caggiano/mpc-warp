@@ -1,4 +1,5 @@
 """Unitree GO1 quadruped walking task."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -12,19 +13,38 @@ _GO1_XML = Path(__file__).parent.parent / "models" / "go1" / "go1.xml"
 
 # Joint name order matches the floating-base XML (first joint is free).
 _HINGE_JOINTS = [
-    "FR_hip_joint", "FR_thigh_joint", "FR_calf_joint",
-    "FL_hip_joint", "FL_thigh_joint", "FL_calf_joint",
-    "RR_hip_joint", "RR_thigh_joint", "RR_calf_joint",
-    "RL_hip_joint", "RL_thigh_joint", "RL_calf_joint",
+    "FR_hip_joint",
+    "FR_thigh_joint",
+    "FR_calf_joint",
+    "FL_hip_joint",
+    "FL_thigh_joint",
+    "FL_calf_joint",
+    "RR_hip_joint",
+    "RR_thigh_joint",
+    "RR_calf_joint",
+    "RL_hip_joint",
+    "RL_thigh_joint",
+    "RL_calf_joint",
 ]
 
 # Default standing pose (qpos indices 7..18, matching _HINGE_JOINTS order).
-_STAND_QPOS = np.array([
-    -0.1,  0.9, -1.8,   # FR: hip, thigh, calf
-     0.1,  0.9, -1.8,   # FL
-    -0.1,  0.9, -1.8,   # RR
-     0.1,  0.9, -1.8,   # RL
-], dtype=np.float64)
+_STAND_QPOS = np.array(
+    [
+        -0.1,
+        0.9,
+        -1.8,  # FR: hip, thigh, calf
+        0.1,
+        0.9,
+        -1.8,  # FL
+        -0.1,
+        0.9,
+        -1.8,  # RR
+        0.1,
+        0.9,
+        -1.8,  # RL
+    ],
+    dtype=np.float64,
+)
 
 
 def _build_go1_model() -> mujoco.MjModel:
@@ -45,7 +65,8 @@ def _build_go1_model() -> mujoco.MjModel:
             act.trntype = mujoco.mjtTrn.mjTRN_JOINT
             act.target = jnt.name
             # gain = 1 (direct torque)
-            gainp = np.zeros(10); gainp[0] = 1.0
+            gainp = np.zeros(10)
+            gainp[0] = 1.0
             act.gainprm = gainp
             act.biastype = mujoco.mjtBias.mjBIAS_NONE
             # Torque limits ±35 Nm (conservative)
@@ -67,9 +88,7 @@ class Go1Walking(Task):
         self.target_velocity = target_velocity
         self.target_height = 0.278  # default standing height
         # Map joint name → qpos index.
-        self._joint_qadr = np.array([
-            int(mj_model.joint(name).qposadr[0]) for name in _HINGE_JOINTS
-        ], dtype=int)
+        self._joint_qadr = np.array([int(mj_model.joint(name).qposadr[0]) for name in _HINGE_JOINTS], dtype=int)
 
     def _reset_to_stand(self, data: mujoco.MjData) -> None:
         """Set data to a stable standing configuration."""
@@ -92,10 +111,10 @@ class Go1Walking(Task):
     def _cost_components(self, data: mujoco.MjData, control: np.ndarray) -> dict[str, float]:
         return {
             "velocity": 1.0 * (self._trunk_velocity_x(data) - self.target_velocity) ** 2,
-            "height":   5.0 * (self._trunk_height(data) - self.target_height) ** 2,
-            "orient":   3.0 * self._upright_cost(data),
-            "pose":     0.1 * float(np.sum((data.qpos[self._joint_qadr] - _STAND_QPOS) ** 2)),
-            "control":  1e-4 * float(np.sum(control ** 2)),
+            "height": 5.0 * (self._trunk_height(data) - self.target_height) ** 2,
+            "orient": 3.0 * self._upright_cost(data),
+            "pose": 0.1 * float(np.sum((data.qpos[self._joint_qadr] - _STAND_QPOS) ** 2)),
+            "control": 1e-4 * float(np.sum(control**2)),
         }
 
     def running_cost(self, data: mujoco.MjData, control: np.ndarray) -> float:
@@ -105,16 +124,17 @@ class Go1Walking(Task):
         return self._cost_components(data, control)
 
     def terminal_cost(self, data: mujoco.MjData) -> float:
-        vel_cost    = (self._trunk_velocity_x(data) - self.target_velocity) ** 2
+        vel_cost = (self._trunk_velocity_x(data) - self.target_velocity) ** 2
         height_cost = (self._trunk_height(data) - self.target_height) ** 2
         orient_cost = self._upright_cost(data)
         return 2.0 * vel_cost + 10.0 * height_cost + 5.0 * orient_cost
 
     def batch_running_cost(self, qpos, qvel, ctrl, sensordata, site_xpos, mocap_pos):
-        qpos = qpos.astype(np.float64); qvel = qvel.astype(np.float64)
-        vel_cost    = 1.0  * (qvel[:, 0] - self.target_velocity) ** 2
-        height_cost = 5.0  * (qpos[:, 2] - self.target_height) ** 2
-        orient_cost = 3.0  * (1.0 - qpos[:, 3] ** 2)           # 1 - w²
-        pose_cost   = 0.1  * np.sum((qpos[:, self._joint_qadr] - _STAND_QPOS) ** 2, axis=1)
-        ctrl_cost   = 1e-4 * np.sum(ctrl ** 2, axis=1)
+        qpos = qpos.astype(np.float64)
+        qvel = qvel.astype(np.float64)
+        vel_cost = 1.0 * (qvel[:, 0] - self.target_velocity) ** 2
+        height_cost = 5.0 * (qpos[:, 2] - self.target_height) ** 2
+        orient_cost = 3.0 * (1.0 - qpos[:, 3] ** 2)  # 1 - w²
+        pose_cost = 0.1 * np.sum((qpos[:, self._joint_qadr] - _STAND_QPOS) ** 2, axis=1)
+        ctrl_cost = 1e-4 * np.sum(ctrl**2, axis=1)
         return vel_cost + height_cost + orient_cost + pose_cost + ctrl_cost

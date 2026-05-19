@@ -11,6 +11,7 @@ The npz format stores:
   body_pos_w     (T, nb, 3)    world-frame body positions  (optional)
   body_quat_w    (T, nb, 4)    world-frame body orientations [w,x,y,z]  (optional)
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -46,22 +47,20 @@ class TrajectoryTask(Task):
         loop: bool = True,
     ) -> None:
         # Share attributes from base task (no super().__init__ re-compile).
-        self.mj_model        = base_task.mj_model
-        self.u_min           = base_task.u_min
-        self.u_max           = base_task.u_max
-        self.dt              = base_task.dt
-        self.trace_site_ids  = list(base_task.trace_site_ids)
+        self.mj_model = base_task.mj_model
+        self.u_min = base_task.u_min
+        self.u_max = base_task.u_max
+        self.dt = base_task.dt
+        self.trace_site_ids = list(base_task.trace_site_ids)
 
-        self._base     = base_task
-        self._ref_qpos = np.asarray(ref_qpos, dtype=np.float64)   # (T, nq_tracked)
-        self._ref_qvel = (
-            np.asarray(ref_qvel, dtype=np.float64) if ref_qvel is not None else None
-        )
-        self._joint_qadr = joint_qadr   # which qpos indices to track
-        self._T        = self._ref_qpos.shape[0]
-        self._qpos_w   = float(qpos_weight)
-        self._qvel_w   = float(qvel_weight)
-        self._loop     = loop
+        self._base = base_task
+        self._ref_qpos = np.asarray(ref_qpos, dtype=np.float64)  # (T, nq_tracked)
+        self._ref_qvel = np.asarray(ref_qvel, dtype=np.float64) if ref_qvel is not None else None
+        self._joint_qadr = joint_qadr  # which qpos indices to track
+        self._T = self._ref_qpos.shape[0]
+        self._qpos_w = float(qpos_weight)
+        self._qvel_w = float(qvel_weight)
+        self._loop = loop
         self._step_idx: int = 0
 
         # Optional 3-D body positions for visualization (from body_pos_w in npz).
@@ -88,8 +87,8 @@ class TrajectoryTask(Task):
         If ``joint_names`` is given, only those joints are tracked;
         otherwise all joints in the npz are tracked in order.
         """
-        data  = np.load(npz_path)
-        mjm   = base_task.mj_model
+        data = np.load(npz_path)
+        mjm = base_task.mj_model
 
         joint_pos = np.array(data["joint_pos"], dtype=np.float64)  # (T, nj)
         joint_vel = np.array(data["joint_vel"], dtype=np.float64)
@@ -99,7 +98,6 @@ class TrajectoryTask(Task):
         # Resolve which qpos addresses to track.
         if joint_names is not None:
             qadr = np.array([int(mjm.joint(n).qposadr[0]) for n in joint_names], dtype=int)
-            dadr = np.array([int(mjm.joint(n).dofadr[0])  for n in joint_names], dtype=int)
         else:
             # Assume the npz columns map to hinge joints in model order.
             hinge_joints = [
@@ -110,7 +108,6 @@ class TrajectoryTask(Task):
             hinge_joints = [n for n in hinge_joints if n]
             use = hinge_joints[:nj]
             qadr = np.array([int(mjm.joint(n).qposadr[0]) for n in use], dtype=int)
-            dadr = np.array([int(mjm.joint(n).dofadr[0])  for n in use], dtype=int)
 
         task = cls(
             base_task,
@@ -192,9 +189,7 @@ class TrajectoryTask(Task):
         return self._base.terminal_cost(data) + 5.0 * self._tracking_cost(data)
 
     def batch_running_cost(self, qpos, qvel, ctrl, sensordata, site_xpos, mocap_pos):
-        base_costs = self._base.batch_running_cost(
-            qpos, qvel, ctrl, sensordata, site_xpos, mocap_pos
-        )
+        base_costs = self._base.batch_running_cost(qpos, qvel, ctrl, sensordata, site_xpos, mocap_pos)
         ref_q = self.ref_qpos_now.astype(np.float64)
         if self._joint_qadr is not None:
             cur_q = qpos[:, self._joint_qadr].astype(np.float64)
