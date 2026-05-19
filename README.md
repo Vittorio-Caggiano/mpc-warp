@@ -1,6 +1,7 @@
 # mpc-warp
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1XRCW9FQON9Eb92qo3w1UtGy631qCdtKs?usp=sharing)
 
-MPC toolkit using [mujoco_warp](https://github.com/google-deepmind/mujoco/tree/main/mjx) for batched parallel rollouts. All MPPI samples are stepped simultaneously in a single `mujoco_warp.step` kernel call — on GPU when CUDA is available, on CPU Warp kernels otherwise.
+MPC toolkit using [mujoco_warp](https://github.com/google-deepmind/mujoco_warp) for batched parallel rollouts. All MPPI samples are stepped simultaneously in a single `mujoco_warp.step` kernel call — on GPU when CUDA is available, on CPU Warp kernels otherwise.
 
 ## Setup
 
