@@ -26,6 +26,7 @@ from mpc_warp.tasks import (
     CartPole,
     Crane,
     DoubleCartPole,
+    G1MocapTracking,
     G1VelocityTracking,
     Go1Walking,
     HumanoidStandup,
@@ -67,6 +68,7 @@ TASKS = {
     "crane": Crane,
     "humanoid_standup": HumanoidStandup,
     "g1_velocity": G1VelocityTracking,
+    "g1_mocap": G1MocapTracking,
     "go1_walking": Go1Walking,
     "go1_trot": _make_go1_trajectory,  # factory, not a class
 }
@@ -80,6 +82,7 @@ CONFIGS: dict[str, dict] = {
     "crane": {"horizon": 16, "num_samples": 64, "noise_sigma": 0.05, "temperature": 0.5},
     "humanoid_standup": {"horizon": 20, "num_samples": 256, "noise_sigma": 0.3, "temperature": 0.1, "nominal_return": 0.1},
     "g1_velocity": {"horizon": 32, "num_samples": 256, "noise_sigma": 0.3, "temperature": 0.05, "nominal_return": 0.15},
+    "g1_mocap": {"horizon": 32, "num_samples": 256, "noise_sigma": 0.3, "temperature": 0.05, "nominal_return": 0.0},
     "go1_walking": {"horizon": 30, "num_samples": 256, "noise_sigma": 0.3, "temperature": 0.1},
     "go1_trot": {"horizon": 30, "num_samples": 256, "noise_sigma": 0.3, "temperature": 0.1},
 }
@@ -124,6 +127,8 @@ def _run_mujoco_viewer(
             ref_pos = None
             if isinstance(task, TrajectoryTask):
                 ref_pos = task.ref_positions_window(solver.cfg.horizon)
+                task.advance()
+            elif isinstance(task, G1MocapTracking):
                 task.advance()
 
             _vel_arrow = np.array([task.vx_cmd, task.vy_cmd]) if isinstance(task, G1VelocityTracking) else None
@@ -229,6 +234,18 @@ def _run_mjviser(task_name: str, max_steps: int, num_samples: int | None) -> Non
             point_shape="circle",
         )
 
+    # Ghost reference body positions for G1MocapTracking (orange point cloud).
+    _mocap_ref_cloud = None
+    if isinstance(task, G1MocapTracking):
+        _dummy = np.zeros((1, 3), dtype=np.float32)
+        _mocap_ref_cloud = server.scene.add_point_cloud(
+            name="mocap_reference",
+            points=_dummy,
+            colors=np.array([[1.0, 0.55, 0.0]], dtype=np.float32),
+            point_size=0.04,
+            point_shape="circle",
+        )
+
     total_cost = 0.0
     step_start = time.perf_counter()
 
@@ -245,6 +262,15 @@ def _run_mjviser(task_name: str, max_steps: int, num_samples: int | None) -> Non
                     _ref_cloud.points = window.astype(np.float32)
                     _ref_cloud.colors = np.tile([1.0, 0.55, 0.0], (len(window), 1)).astype(np.float32)
             task.advance()
+        elif isinstance(task, G1MocapTracking):
+            task.advance()
+            if _mocap_ref_cloud is not None:
+                t = task._ref_idx
+                ref_pelvis = task.ref_xpos_viz[t][0:1, :]  # (1, 3) reference pelvis origin
+                actual_pelvis = env.data.xpos[1:2, :]  # (1, 3) actual pelvis origin
+                ref_pts = (task.ref_xpos_viz[t] - ref_pelvis + actual_pelvis + scene._scene_offset).astype(np.float32)
+                _mocap_ref_cloud.points = ref_pts
+                _mocap_ref_cloud.colors = np.tile([1.0, 0.55, 0.0], (len(ref_pts), 1)).astype(np.float32)
 
         # Update planned MPPI trajectory cloud.
         if _plan_cloud is not None and solver.planned_sites is not None:
@@ -377,6 +403,8 @@ def main() -> int:
                 u = solver.command(env.data)
                 _, reward, *_ = env.step(u)
                 total_cost -= reward
+                if isinstance(task, (TrajectoryTask, G1MocapTracking)):
+                    task.advance()
                 if (step_i + 1) % 50 == 0:
                     print(f"  step {step_i + 1:4d}  cumulative_cost={total_cost:.3f}")
             print(f"{args.task}: done after {args.steps} steps, total_cost={total_cost:.3f}")

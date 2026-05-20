@@ -14,6 +14,9 @@ dependencies = [
   "mujoco>=3.1",
   "mujoco_warp",
   "mjviser>=0.0.14",
+  "huggingface-hub>=1.15.0",
+  "ipykernel>=7.2.0",
+  "nbconvert>=7.17.1",
 ]
 
 [dependency-groups]

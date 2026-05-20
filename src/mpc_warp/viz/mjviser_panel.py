@@ -1,4 +1,5 @@
 """MJPC-style real-time panels rendered inside a viser browser window."""
+
 from __future__ import annotations
 
 from collections import deque
@@ -44,32 +45,26 @@ class MppiPanel:
                 title="Running cost",
             )
             with server.gui.add_folder("Cost terms"):
-                self._terms_html = server.gui.add_html(
-                    "<div style='color:#aaa;font-size:0.8em'>waiting…</div>"
-                )
+                self._terms_html = server.gui.add_html("<div style='color:#aaa;font-size:0.8em'>waiting…</div>")
 
         with server.gui.add_folder("MPC · Planner"):
             self._ess_bar = server.gui.add_progress_bar(value=0.0, animated=False)
-            self._ess_html = server.gui.add_html(
-                "<div style='font-size:0.8em'>ESS: —</div>"
-            )
+            self._ess_html = server.gui.add_html("<div style='font-size:0.8em'>ESS: —</div>")
 
         self._horizon_plot: viser.GuiUplotHandle | None = None
         self._server = server
 
         with server.gui.add_folder("MPC · Actions (current)"):
-            self._action_html = server.gui.add_html(
-                self._render_action_bars(np.zeros(nu))
-            )
+            self._action_html = server.gui.add_html(self._render_action_bars(np.zeros(nu)))
 
     # ------------------------------------------------------------------
     def update(
         self,
         last_cost: float,
-        cost_weights: np.ndarray,       # (N,) softmin weights
-        u: np.ndarray,                  # (nu,) current action
+        cost_weights: np.ndarray,  # (N,) softmin weights
+        u: np.ndarray,  # (nu,) current action
         cost_terms: dict[str, float] | None = None,  # named breakdown
-        u_nominal: np.ndarray | None = None,          # (H, nu) horizon
+        u_nominal: np.ndarray | None = None,  # (H, nu) horizon
     ) -> None:
         self._step += 1
         step = float(self._step)
@@ -87,14 +82,11 @@ class MppiPanel:
 
         # ── ESS ────────────────────────────────────────────────────────
         N = len(cost_weights)
-        sq = float(np.sum(cost_weights ** 2))
+        sq = float(np.sum(cost_weights**2))
         ess = float(1.0 / sq) if sq > 0 else 0.0
         frac = float(np.clip(ess / max(N, 1), 0.0, 1.0))
         self._ess_bar.value = frac
-        self._ess_html.content = (
-            f"<div style='font-size:0.8em'>ESS: {ess:.0f} / {N}"
-            f"  ({100 * frac:.0f}%)</div>"
-        )
+        self._ess_html.content = f"<div style='font-size:0.8em'>ESS: {ess:.0f} / {N}  ({100 * frac:.0f}%)</div>"
 
         # ── action horizon uplot (built once, updated each step) ───────
         if u_nominal is not None:
@@ -110,15 +102,12 @@ class MppiPanel:
 
         if self._horizon_plot is None:
             # Build the plot on first call.
-            _stroke_colors = ["#2ecc71", "#e74c3c", "#3498db", "#f39c12",
-                               "#9b59b6", "#1abc9c"]
+            _stroke_colors = ["#2ecc71", "#e74c3c", "#3498db", "#f39c12", "#9b59b6", "#1abc9c"]
             series_list = [uplot.Series(label="step")]
             for i in range(nu):
                 name = self._names[i] if i < len(self._names) else f"a{i}"
                 color = _stroke_colors[i % len(_stroke_colors)]
-                series_list.append(
-                    uplot.Series(label=name, stroke=color, width=1.5)
-                )
+                series_list.append(uplot.Series(label=name, stroke=color, width=1.5))
             with self._server.gui.add_folder("MPC · Actions (horizon)"):
                 self._horizon_plot = self._server.gui.add_uplot(
                     data=(t_axis, *[u_nominal[:, i] for i in range(nu)]),
@@ -160,10 +149,7 @@ class MppiPanel:
             pct = abs(ui_c) * 50
             color = "#2ecc71" if ui_c >= 0 else "#e74c3c"
             if ui_c >= 0:
-                bar = (
-                    f"<div style='margin-left:50%;width:{pct:.1f}%;height:100%;"
-                    f"background:{color};border-radius:2px;'></div>"
-                )
+                bar = f"<div style='margin-left:50%;width:{pct:.1f}%;height:100%;background:{color};border-radius:2px;'></div>"
             else:
                 bar = (
                     f"<div style='margin-left:{50 - pct:.1f}%;width:{pct:.1f}%;height:100%;"

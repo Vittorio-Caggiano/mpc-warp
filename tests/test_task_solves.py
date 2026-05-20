@@ -1,8 +1,8 @@
+from mpc_warp.backends.mujoco_warp_backend import MujocoWarpBackend
+from mpc_warp.core.costs import quadratic_cost
 from mpc_warp.envs.registry import ENV_REGISTRY
 from mpc_warp.envs.task_envs import make_task_env, state_norm
-from mpc_warp.backends.mujoco_warp_backend import MujocoWarpBackend
 from mpc_warp.solvers.mppi import MPPIConfig, MPPISolver
-from mpc_warp.core.costs import quadratic_cost
 
 
 def test_registry_tasks_are_solved_by_mpc():

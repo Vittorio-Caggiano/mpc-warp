@@ -1,4 +1,5 @@
 """Fork-based environment wrapper used only by the synthetic-env test stack."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass

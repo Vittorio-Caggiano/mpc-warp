@@ -12,9 +12,7 @@ class Pendulum(Task):
     """Inverted pendulum swingup."""
 
     def __init__(self) -> None:
-        mj_model = mujoco.MjModel.from_xml_path(
-            str(MODELS_DIR / "pendulum" / "scene.xml")
-        )
+        mj_model = mujoco.MjModel.from_xml_path(str(MODELS_DIR / "pendulum" / "scene.xml"))
         super().__init__(mj_model, trace_sites=["tip"])
 
     def _distance_to_upright(self, data: mujoco.MjData) -> float:
@@ -29,7 +27,7 @@ class Pendulum(Task):
 
     def cost_terms(self, data: mujoco.MjData, control: np.ndarray) -> dict[str, float]:
         return {
-            "angle":   self._distance_to_upright(data),
+            "angle": self._distance_to_upright(data),
             "ang_vel": 0.01 * float(data.qvel[0]) ** 2,
             "control": 0.001 * float(np.sum(control**2)),
         }
@@ -40,6 +38,6 @@ class Pendulum(Task):
     def batch_running_cost(self, qpos, qvel, ctrl, sensordata, site_xpos, mocap_pos):
         theta = qpos[:, 0].astype(np.float64) - math.pi
         angle_cost = (np.cos(theta) - 1.0) ** 2 + np.sin(theta) ** 2
-        vel_cost   = 0.01 * qvel[:, 0].astype(np.float64) ** 2
-        ctrl_cost  = 0.001 * np.sum(ctrl ** 2, axis=1)
+        vel_cost = 0.01 * qvel[:, 0].astype(np.float64) ** 2
+        ctrl_cost = 0.001 * np.sum(ctrl**2, axis=1)
         return angle_cost + vel_cost + ctrl_cost

@@ -10,9 +10,7 @@ class Particle(Task):
     """Planar point mass chases a mocap target."""
 
     def __init__(self) -> None:
-        mj_model = mujoco.MjModel.from_xml_path(
-            str(MODELS_DIR / "particle" / "scene.xml")
-        )
+        mj_model = mujoco.MjModel.from_xml_path(str(MODELS_DIR / "particle" / "scene.xml"))
         super().__init__(mj_model, trace_sites=["pointmass"])
         self.pointmass_id = mj_model.site("pointmass").id
 
@@ -28,9 +26,9 @@ class Particle(Task):
 
     def batch_running_cost(self, qpos, qvel, ctrl, sensordata, site_xpos, mocap_pos):
         # site_xpos: (N, nsite, 3), mocap_pos: (N, nmocap, 3)
-        pos    = site_xpos[:, self.pointmass_id, :].astype(np.float64)   # (N, 3)
-        target = mocap_pos[:, 0, :].astype(np.float64)                   # (N, 3)
+        pos = site_xpos[:, self.pointmass_id, :].astype(np.float64)  # (N, 3)
+        target = mocap_pos[:, 0, :].astype(np.float64)  # (N, 3)
         pos_cost = 5.0 * np.sum((pos - target) ** 2, axis=1)
         vel_cost = 0.1 * np.sum(qvel.astype(np.float64) ** 2, axis=1)
-        ctrl_cost = 0.1 * np.sum(ctrl ** 2, axis=1)
+        ctrl_cost = 0.1 * np.sum(ctrl**2, axis=1)
         return pos_cost + vel_cost + ctrl_cost
