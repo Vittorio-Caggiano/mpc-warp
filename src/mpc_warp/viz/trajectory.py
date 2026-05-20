@@ -8,6 +8,7 @@ Scalar HUD text (cost, ESS) uses viewer.set_texts().
 
 from __future__ import annotations
 
+import math
 from collections import deque
 
 import mujoco
@@ -144,8 +145,13 @@ class TrajectoryViz:
         planned_sites: np.ndarray | None,
         ref_positions: np.ndarray | None,
         viewer_scn: mujoco.MjvScene,
+        velocity_arrow: np.ndarray | None = None,
     ) -> None:
-        """Update 3-D user_scn overlays.  Call inside viewer.lock()."""
+        """Update 3-D user_scn overlays.  Call inside viewer.lock().
+
+        velocity_arrow: world-frame (vx, vy) command vector; drawn as an arrow
+            from the first trace site (e.g. torso).  Pass None to skip.
+        """
         for k, sid in enumerate(self._task.trace_site_ids):
             self._traces[k].append(data.site_xpos[sid].copy())
 
@@ -156,6 +162,11 @@ class TrajectoryViz:
         self._draw_traces(viewer_scn)
         if planned_sites is not None:
             self._draw_plan(planned_sites, viewer_scn)
+        if velocity_arrow is not None and len(self._task.trace_site_ids) > 0:
+            sid = self._task.trace_site_ids[0]
+            root_xy = data.qpos[:2].copy()
+            self._draw_velocity_arrow(data.site_xpos[sid].copy(), velocity_arrow, viewer_scn)
+            self._draw_target_path(root_xy, velocity_arrow, viewer_scn)
 
     def build_figures(
         self,
@@ -217,17 +228,23 @@ class TrajectoryViz:
         self,
         last_cost: float,
         cost_weights: np.ndarray,
+        extra_lines: list[tuple[str, str]] | None = None,
     ) -> list[tuple[int | None, int | None, str | None, str | None]]:
         """Return text entries for viewer.set_texts().
 
         Each entry: (font, gridpos, left_text, right_text).
         gridpos=0 → top-left corner of the viewer.
+        extra_lines: additional (left, right) text rows appended below the cost line.
         """
         N = len(cost_weights)
         ess = 1.0 / float(np.sum(cost_weights**2)) if N > 0 else 0.0
-        return [
+        rows: list[tuple[int | None, int | None, str | None, str | None]] = [
             (None, 0, f"cost  {last_cost:.4f}", f"ESS {ess:.0f}/{N}"),
         ]
+        if extra_lines:
+            for left, right in extra_lines:
+                rows.append((None, None, left, right))
+        return rows
 
     # ------------------------------------------------------------------
     # Legacy single-call update (kept for backwards compat)
@@ -270,6 +287,54 @@ class TrajectoryViz:
             _add_sphere(scn, ref_positions[t], r, rgba)
             if t > 0:
                 _add_line(scn, ref_positions[t - 1], ref_positions[t], 0.004, orange_dim)
+
+    def _draw_velocity_arrow(self, origin: np.ndarray, vel_xy: np.ndarray, scn: mujoco.MjvScene) -> None:
+        """Draw a green arrow from origin in the commanded (vx, vy) direction.
+
+        The arrow length scales with speed; a minimum stub is always shown so the
+        direction is visible even at zero command.
+        """
+        vx, vy = float(vel_xy[0]), float(vel_xy[1])
+        speed = math.sqrt(vx**2 + vy**2)
+        # Scale: 1 m/s → 0.6 m arrow; clamp minimum at 0.15 m for zero-speed
+        arrow_len = max(0.15, speed * 0.6)
+        if speed > 1e-3:
+            dx, dy = vx / speed * arrow_len, vy / speed * arrow_len
+        else:
+            dx, dy = 0.0, arrow_len  # point forward when no command
+
+        shaft_start = origin.copy()
+        shaft_end = origin + np.array([dx, dy, 0.0])
+        green = np.array([0.1, 0.9, 0.2, 1.0])
+
+        _add_line(scn, shaft_start, shaft_end, 0.012, green)
+        _add_sphere(scn, shaft_end, 0.04, green)
+
+        # Small crossbar perpendicular to shaft for arrowhead
+        if speed > 1e-3:
+            perp = np.array([-dy, dx, 0.0]) / arrow_len * 0.08
+        else:
+            perp = np.array([0.08, 0.0, 0.0])
+        tip = shaft_end - np.array([dx, dy, 0.0]) / arrow_len * 0.12
+        _add_line(scn, tip - perp, shaft_end, 0.008, green)
+        _add_line(scn, tip + perp, shaft_end, 0.008, green)
+
+    def _draw_target_path(self, root_xy: np.ndarray, vel_xy: np.ndarray, scn: mujoco.MjvScene) -> None:
+        """Draw green dots on the ground plane extending in the commanded direction."""
+        vx, vy = float(vel_xy[0]), float(vel_xy[1])
+        speed = math.sqrt(vx**2 + vy**2)
+        path_len = max(1.5, speed * 2.0)
+        n_dots = 20
+        if speed > 1e-3:
+            dx, dy = vx / speed, vy / speed
+        else:
+            dx, dy = 1.0, 0.0
+        green = np.array([0.1, 0.9, 0.2, 0.8])
+        for i in range(n_dots):
+            t = path_len * (i + 1) / n_dots
+            pos = np.array([root_xy[0] + dx * t, root_xy[1] + dy * t, 0.01])
+            r = 0.03 if i == n_dots - 1 else 0.02
+            _add_sphere(scn, pos, r, green)
 
     def _draw_plan(self, planned_sites: np.ndarray, scn: mujoco.MjvScene) -> None:
         H, n_sites, _ = planned_sites.shape

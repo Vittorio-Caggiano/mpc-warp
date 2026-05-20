@@ -26,6 +26,7 @@ from mpc_warp.tasks import (
     CartPole,
     Crane,
     DoubleCartPole,
+    G1VelocityTracking,
     Go1Walking,
     HumanoidStandup,
     Particle,
@@ -65,6 +66,7 @@ TASKS = {
     "walker": Walker,
     "crane": Crane,
     "humanoid_standup": HumanoidStandup,
+    "g1_velocity": G1VelocityTracking,
     "go1_walking": Go1Walking,
     "go1_trot": _make_go1_trajectory,  # factory, not a class
 }
@@ -77,6 +79,7 @@ CONFIGS: dict[str, dict] = {
     "walker": {"horizon": 16, "num_samples": 128, "noise_sigma": 0.3, "temperature": 0.5},
     "crane": {"horizon": 16, "num_samples": 64, "noise_sigma": 0.05, "temperature": 0.5},
     "humanoid_standup": {"horizon": 20, "num_samples": 256, "noise_sigma": 0.3, "temperature": 0.1, "nominal_return": 0.1},
+    "g1_velocity": {"horizon": 32, "num_samples": 256, "noise_sigma": 0.3, "temperature": 0.05, "nominal_return": 0.15},
     "go1_walking": {"horizon": 30, "num_samples": 256, "noise_sigma": 0.3, "temperature": 0.1},
     "go1_trot": {"horizon": 30, "num_samples": 256, "noise_sigma": 0.3, "temperature": 0.1},
 }
@@ -123,12 +126,14 @@ def _run_mujoco_viewer(
                 ref_pos = task.ref_positions_window(solver.cfg.horizon)
                 task.advance()
 
+            _vel_arrow = np.array([task.vx_cmd, task.vy_cmd]) if isinstance(task, G1VelocityTracking) else None
             with viewer_ctx.lock():
                 viz.update_scene(
                     env.data,
                     solver.planned_sites,
                     ref_pos,
                     viewer_ctx.user_scn,
+                    velocity_arrow=_vel_arrow,
                 )
             figs = viz.build_figures(
                 solver.last_cost,
@@ -138,7 +143,8 @@ def _run_mujoco_viewer(
                 u_nominal=solver.u_nominal_snapshot,
             )
             viewer_ctx.set_figures(figs)
-            viewer_ctx.set_texts(viz.build_texts(solver.last_cost, solver.cost_weights))
+            _extra = _velocity_cmd_lines(task)
+            viewer_ctx.set_texts(viz.build_texts(solver.last_cost, solver.cost_weights, extra_lines=_extra))
             viewer_ctx.sync()
 
             if mjviser_panel is not None:
@@ -199,6 +205,30 @@ def _run_mjviser(task_name: str, max_steps: int, num_samples: int | None) -> Non
             point_shape="circle",
         )
 
+    # Planned MPPI trajectory point cloud (cyan dots — updated each step).
+    _plan_cloud = None
+    if task.trace_site_ids:
+        _dummy = np.zeros((1, 3), dtype=np.float32)
+        _plan_cloud = server.scene.add_point_cloud(
+            name="planned_trajectory",
+            points=_dummy,
+            colors=np.array([[0.0, 0.9, 0.9]], dtype=np.float32),
+            point_size=0.03,
+            point_shape="circle",
+        )
+
+    # Target-path strip for velocity-command tasks (green dots on ground plane).
+    _target_path_cloud = None
+    if isinstance(task, G1VelocityTracking):
+        _dummy = np.zeros((1, 3), dtype=np.float32)
+        _target_path_cloud = server.scene.add_point_cloud(
+            name="target_path",
+            points=_dummy,
+            colors=np.array([[0.1, 0.9, 0.2]], dtype=np.float32),
+            point_size=0.04,
+            point_shape="circle",
+        )
+
     total_cost = 0.0
     step_start = time.perf_counter()
 
@@ -215,6 +245,28 @@ def _run_mjviser(task_name: str, max_steps: int, num_samples: int | None) -> Non
                     _ref_cloud.points = window.astype(np.float32)
                     _ref_cloud.colors = np.tile([1.0, 0.55, 0.0], (len(window), 1)).astype(np.float32)
             task.advance()
+
+        # Update planned MPPI trajectory cloud.
+        if _plan_cloud is not None and solver.planned_sites is not None:
+            pts = solver.planned_sites[:, :, :].reshape(-1, 3)
+            _plan_cloud.points = pts.astype(np.float32)
+            _plan_cloud.colors = np.tile([0.0, 0.9, 0.9], (len(pts), 1)).astype(np.float32)
+
+        # Update ground-plane target path for velocity commands.
+        if _target_path_cloud is not None:
+            root_xy = env.data.qpos[:2]
+            speed = np.sqrt(task.vx_cmd**2 + task.vy_cmd**2)
+            path_len = max(1.5, speed * 2.0)
+            n_dots = 20
+            ts = np.linspace(0.1, path_len, n_dots)
+            if speed > 1e-3:
+                dx = task.vx_cmd / speed
+                dy = task.vy_cmd / speed
+            else:
+                dx, dy = 1.0, 0.0
+            path_pts = np.stack([root_xy[0] + dx * ts, root_xy[1] + dy * ts, np.full(n_dots, 0.02)], axis=1)
+            _target_path_cloud.points = path_pts.astype(np.float32)
+            _target_path_cloud.colors = np.tile([0.1, 0.9, 0.2], (n_dots, 1)).astype(np.float32)
 
         scene.update_from_mjdata(env.data)
         panel.update(
@@ -258,6 +310,12 @@ def _run_both(task_name: str, max_steps: int, num_samples: int | None) -> None:
 
 
 # ── utilities ─────────────────────────────────────────────────────────────────
+
+
+def _velocity_cmd_lines(task) -> list[tuple[str, str]] | None:
+    if isinstance(task, G1VelocityTracking):
+        return [(f"cmd  vx {task.vx_cmd:+.2f}  vy {task.vy_cmd:+.2f}", f"yaw {task.yaw_cmd:+.2f} rad/s")]
+    return None
 
 
 def _make_cfg(task_name: str, num_samples: int | None, render: bool) -> dict:

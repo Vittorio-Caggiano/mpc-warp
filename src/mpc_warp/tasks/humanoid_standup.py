@@ -20,7 +20,9 @@ class HumanoidStandup(Task):
     """Standup task for the Unitree G1 humanoid."""
 
     def __init__(self) -> None:
-        mj_model = mujoco.MjModel.from_xml_path(str(MODELS_DIR / "g1" / "scene.xml"))
+        _spec = mujoco.MjSpec.from_file(str(MODELS_DIR / "g1" / "scene.xml"))
+        _spec.njmax = 200
+        mj_model = _spec.compile()
         super().__init__(mj_model, trace_sites=["imu_in_torso"])
 
         self._orient_adr = int(mj_model.sensor_adr[mj_model.sensor("imu_in_torso_quat").id])

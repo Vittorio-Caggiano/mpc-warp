@@ -50,6 +50,9 @@ uv run mjpython examples/run_mujoco_task.py walker --viewer both --render
 # GO1 quadruped
 uv run python examples/run_mujoco_task.py go1_walking --viewer mjviser --render
 
+# G1 humanoid — command-conditioned velocity tracking
+uv run python examples/run_mujoco_task.py g1_velocity --viewer mjviser --render
+
 uv run python examples/run_all_envs.py      # synthetic convergence envs
 ```
 
@@ -59,7 +62,9 @@ uv run python examples/run_all_envs.py      # synthetic convergence envs
 
 1. **Tasks** (`src/mpc_warp/tasks/`) — `Task` subclasses implementing `running_cost(data, ctrl)`, `terminal_cost(data)`, and `batch_running_cost(...)` against `mujoco.MjData` / batched numpy arrays.
    - Models in `src/mpc_warp/models/` (pendulum, cart_pole, double_cart_pole, particle, walker, crane, humanoid_standup/G1, go1)
-   - `Go1Walking` — Unitree GO1 quadruped built dynamically via `mujoco.MjSpec` from the local `models/go1/go1.xml`; adds a floor and torque actuators at runtime
+   - `Go1Walking` — Unitree GO1 quadruped built dynamically via `mujoco.MjSpec` from the local `models/go1/go1.xml`; adds a floor and torque actuators at runtime; sets `njmax=100` for warp contact-constraint buffer
+   - `HumanoidStandup` / `G1VelocityTracking` — Unitree G1 humanoid tasks; both load scene.xml via `MjSpec` and set `njmax=80` so warp rollouts don't overflow the contact-constraint buffer
+   - `G1VelocityTracking` — command-conditioned (vx, vy, yaw_rate) velocity tracking for the G1; call `task.set_command(vx, vy, yaw)` to change target at runtime; uses exponential-kernel velocity cost following mjlab conventions
    - `TrajectoryTask` — wraps any base task and adds a reference `(T, nq)` qpos tracking cost; call `.advance()` after each env step; loads trajectories from mjlab-format `.npz` files via `TrajectoryTask.from_npz`
    - Each task declares `trace_sites` (site names for 3-D trajectory overlay); resolved to integer IDs stored as `self.trace_site_ids`
    - `batch_running_cost(qpos, qvel, ctrl, sensordata, site_xpos, mocap_pos)` — vectorised cost over N worlds using bulk numpy arrays; all built-in tasks implement this; the base class provides a slow per-world fallback loop for custom tasks
@@ -120,4 +125,6 @@ uv run python examples/run_all_envs.py      # synthetic convergence envs
 - `batch_running_cost` receives raw warp array outputs (float32 numpy); cast to float64 inside the method before arithmetic
 - `Go1Walking` builds its model at runtime via `mujoco.MjSpec`; there is no pre-compiled scene XML for it
 - `TrajectoryTask.from_npz` expects at least `joint_pos` and `joint_vel` keys; optional `body_pos_w` enables 3-D reference trajectory visualisation
+- **Task hooks**: `reset_data(data)` initialises the env to the task's natural start state (e.g. stand keyframe for legged robots); `nominal_ctrl()` returns the warmstart nominal for MPPI (e.g. gravity-comp torques or stand joint angles); `noise_sigma(cfg_sigma)` returns per-actuator sigma (override for physical-unit actuators); `WarpMPPIConfig.nominal_return` (0–1) decays u_nominal back to `nominal_ctrl()` each step to prevent long-run drift
+- **njmax for warp**: models loaded via `mujoco.MjModel.from_xml_path` have `njmax=-1` (auto) which can cause `nefc overflow` in mujoco_warp parallel worlds; load via `mujoco.MjSpec` and set `spec.njmax = 80–100` before `spec.compile()` for contact-rich models
 - Requires Python ≥ 3.10
