@@ -2,6 +2,8 @@
 
 MPC toolkit using [mujoco_warp](https://github.com/google-deepmind/mujoco_warp) for batched parallel rollouts. All MPPI samples are stepped simultaneously in a single `mujoco_warp.step` kernel call — on GPU when CUDA is available, on CPU Warp kernels otherwise.
 
+<img width="1200" height="640" alt="mpc_warp_banner" src="https://github.com/user-attachments/assets/68757627-1f3e-4439-90c3-8054c3f7c3e9" />
+
 ## Setup
 
 ```bash
