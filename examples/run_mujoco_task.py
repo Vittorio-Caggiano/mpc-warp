@@ -1,15 +1,15 @@
 """Run MPPI on a real MuJoCo task using mujoco_warp batched rollouts.
 
 Three viewer modes are supported:
-  --viewer mujoco   (default) native 3-D desktop viewer + trajectory overlays
-  --viewer mjviser  browser-based viser viewer + MPPI panels (cost, ESS, actions)
+  --viewer mjviser  (default) browser-based viewer + MPPI panels (cost, ESS, actions)
+  --viewer mujoco   native 3-D desktop viewer + trajectory overlays (needs mjpython on macOS)
   --viewer both     native 3-D viewer + mjviser panels running side-by-side
 
 Usage:
-    uv run mjpython examples/run_mujoco_task.py pendulum --viewer mujoco --render
-    uv run python   examples/run_mujoco_task.py pendulum --viewer mjviser --render
-    uv run mjpython examples/run_mujoco_task.py walker   --viewer both   --render
-    uv run python   examples/run_mujoco_task.py go1_walking --viewer mjviser --render
+    uv run python   examples/run_mujoco_task.py pendulum --render
+    uv run python   examples/run_mujoco_task.py go1_walking --render
+    uv run mjpython examples/run_mujoco_task.py walker --viewer mujoco --render
+    uv run mjpython examples/run_mujoco_task.py walker --viewer both   --render
 """
 
 from __future__ import annotations
@@ -74,17 +74,75 @@ TASKS = {
 }
 
 CONFIGS: dict[str, dict] = {
-    "pendulum": {"horizon": 16, "num_samples": 128, "noise_sigma": 0.5, "temperature": 0.1},
-    "cart_pole": {"horizon": 20, "num_samples": 128, "noise_sigma": 0.3, "temperature": 0.1},
-    "double_cart_pole": {"horizon": 20, "num_samples": 128, "noise_sigma": 0.3, "temperature": 0.1},
-    "particle": {"horizon": 12, "num_samples": 64, "noise_sigma": 0.3, "temperature": 0.5},
-    "walker": {"horizon": 16, "num_samples": 128, "noise_sigma": 0.3, "temperature": 0.5},
-    "crane": {"horizon": 16, "num_samples": 64, "noise_sigma": 0.05, "temperature": 0.5},
-    "humanoid_standup": {"horizon": 20, "num_samples": 256, "noise_sigma": 0.3, "temperature": 0.1, "nominal_return": 0.1},
-    "g1_velocity": {"horizon": 32, "num_samples": 256, "noise_sigma": 0.3, "temperature": 0.05, "nominal_return": 0.15},
-    "g1_mocap": {"horizon": 32, "num_samples": 256, "noise_sigma": 0.3, "temperature": 0.05, "nominal_return": 0.0},
-    "go1_walking": {"horizon": 30, "num_samples": 256, "noise_sigma": 0.3, "temperature": 0.1},
-    "go1_trot": {"horizon": 30, "num_samples": 256, "noise_sigma": 0.3, "temperature": 0.1},
+    "pendulum": {
+        "horizon": 16,
+        "num_samples": 128,
+        "noise_sigma": 0.5,
+        "temperature": 0.1,
+    },
+    "cart_pole": {
+        "horizon": 20,
+        "num_samples": 128,
+        "noise_sigma": 0.3,
+        "temperature": 0.1,
+    },
+    "double_cart_pole": {
+        "horizon": 20,
+        "num_samples": 128,
+        "noise_sigma": 0.3,
+        "temperature": 0.1,
+    },
+    "particle": {
+        "horizon": 12,
+        "num_samples": 64,
+        "noise_sigma": 0.3,
+        "temperature": 0.5,
+    },
+    "walker": {
+        "horizon": 16,
+        "num_samples": 128,
+        "noise_sigma": 0.3,
+        "temperature": 0.5,
+    },
+    "crane": {
+        "horizon": 16,
+        "num_samples": 64,
+        "noise_sigma": 0.05,
+        "temperature": 0.5,
+    },
+    "humanoid_standup": {
+        "horizon": 20,
+        "num_samples": 256,
+        "noise_sigma": 0.3,
+        "temperature": 0.1,
+        "nominal_return": 0.1,
+    },
+    "g1_velocity": {
+        "horizon": 32,
+        "num_samples": 256,
+        "noise_sigma": 0.3,
+        "temperature": 0.05,
+        "nominal_return": 0.15,
+    },
+    "g1_mocap": {
+        "horizon": 32,
+        "num_samples": 256,
+        "noise_sigma": 0.3,
+        "temperature": 0.05,
+        "nominal_return": 0.0,
+    },
+    "go1_walking": {
+        "horizon": 30,
+        "num_samples": 256,
+        "noise_sigma": 0.3,
+        "temperature": 0.1,
+    },
+    "go1_trot": {
+        "horizon": 30,
+        "num_samples": 256,
+        "noise_sigma": 0.3,
+        "temperature": 0.1,
+    },
 }
 
 
@@ -211,8 +269,9 @@ def _run_mjviser(task_name: str, max_steps: int, num_samples: int | None) -> Non
         )
 
     # Planned MPPI trajectory point cloud (cyan dots — updated each step).
+    # Hidden for mocap tracking where the ghost overlay is more informative.
     _plan_cloud = None
-    if task.trace_site_ids:
+    if task.trace_site_ids and not isinstance(task, G1MocapTracking):
         _dummy = np.zeros((1, 3), dtype=np.float32)
         _plan_cloud = server.scene.add_point_cloud(
             name="planned_trajectory",
@@ -244,7 +303,15 @@ def _run_mjviser(task_name: str, max_steps: int, num_samples: int | None) -> Non
             colors=np.array([[1.0, 0.55, 0.0]], dtype=np.float32),
             point_size=0.04,
             point_shape="circle",
+            visible=False,
         )
+
+    # Semi-transparent ghost overlay showing the reference configuration.
+    _ghost: "GhostOverlay | None" = None
+    if isinstance(task, G1MocapTracking):
+        from mpc_warp.viz.ghost_overlay import GhostOverlay
+
+        _ghost = GhostOverlay(server, task.mj_model, alpha=0.6, color=(1.0, 0.75, 0.35))
 
     total_cost = 0.0
     step_start = time.perf_counter()
@@ -271,6 +338,9 @@ def _run_mjviser(task_name: str, max_steps: int, num_samples: int | None) -> Non
                 ref_pts = (task.ref_xpos_viz[t] - ref_pelvis + actual_pelvis + scene._scene_offset).astype(np.float32)
                 _mocap_ref_cloud.points = ref_pts
                 _mocap_ref_cloud.colors = np.tile([1.0, 0.55, 0.0], (len(ref_pts), 1)).astype(np.float32)
+            if _ghost is not None:
+                t = task._ref_idx
+                _ghost.update(task.ref_qpos[t], scene_offset=scene._scene_offset)
 
         # Update planned MPPI trajectory cloud.
         if _plan_cloud is not None and solver.planned_sites is not None:
@@ -290,7 +360,10 @@ def _run_mjviser(task_name: str, max_steps: int, num_samples: int | None) -> Non
                 dy = task.vy_cmd / speed
             else:
                 dx, dy = 1.0, 0.0
-            path_pts = np.stack([root_xy[0] + dx * ts, root_xy[1] + dy * ts, np.full(n_dots, 0.02)], axis=1)
+            path_pts = np.stack(
+                [root_xy[0] + dx * ts, root_xy[1] + dy * ts, np.full(n_dots, 0.02)],
+                axis=1,
+            )
             _target_path_cloud.points = path_pts.astype(np.float32)
             _target_path_cloud.colors = np.tile([0.1, 0.9, 0.2], (n_dots, 1)).astype(np.float32)
 
@@ -340,7 +413,12 @@ def _run_both(task_name: str, max_steps: int, num_samples: int | None) -> None:
 
 def _velocity_cmd_lines(task) -> list[tuple[str, str]] | None:
     if isinstance(task, G1VelocityTracking):
-        return [(f"cmd  vx {task.vx_cmd:+.2f}  vy {task.vy_cmd:+.2f}", f"yaw {task.yaw_cmd:+.2f} rad/s")]
+        return [
+            (
+                f"cmd  vx {task.vx_cmd:+.2f}  vy {task.vy_cmd:+.2f}",
+                f"yaw {task.yaw_cmd:+.2f} rad/s",
+            )
+        ]
     return None
 
 
@@ -371,14 +449,18 @@ def main() -> int:
     parser.add_argument(
         "--viewer",
         choices=["mujoco", "mjviser", "both"],
-        default="mujoco",
+        default="mjviser",
         help=(
+            "mjviser: browser-based viewer (default); "
             "mujoco: native desktop viewer (needs mjpython on macOS); "
-            "mjviser: browser-based viewer; "
             "both: native viewer + mjviser panels"
         ),
     )
-    parser.add_argument("--render", action="store_true", help="Enable viewer (required for mujoco/both modes on macOS)")
+    parser.add_argument(
+        "--render",
+        action="store_true",
+        help="Enable viewer (required for mujoco/both modes on macOS)",
+    )
     parser.add_argument("--num-samples", type=int, default=None, help="Override sample count")
     args = parser.parse_args()
 

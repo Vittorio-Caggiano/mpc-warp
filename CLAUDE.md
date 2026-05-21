@@ -38,6 +38,9 @@ uv run pytest tests/test_solver_smoke.py -q  # single test file
 # Headless (no viewer)
 uv run python examples/run_mujoco_task.py pendulum
 
+# Browser-based mjviser viewer (default — no mjpython needed)
+uv run python examples/run_mujoco_task.py pendulum --render
+
 # Native 3-D desktop viewer (requires mjpython on macOS for Cocoa event loop)
 uv run mjpython examples/run_mujoco_task.py cart_pole --viewer mujoco --render
 
