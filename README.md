@@ -109,3 +109,14 @@ Interactive walkthroughs for MPPI, mjviser, and MuJoCo tasks. Run locally with J
 |----------|----------|-------|
 | MPPI + mjviser visualization | [`examples/tutorial_mppi_mjviser.ipynb`](examples/tutorial_mppi_mjviser.ipynb) | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1XRCW9FQON9Eb92qo3w1UtGy631qCdtKs?usp=sharing) |
 | G1 motion-capture tracking | [`examples/tutorial_g1_mocap.ipynb`](examples/tutorial_g1_mocap.ipynb) | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1b-ONmaP3YNS8uTZCb4XAcrXKa7rufXTI?usp=sharing) |
+
+
+# Acknowledgments
+
+This repository builds on ideas and inspiration from several outstanding open-source projects, including:
+
+- [hydrax](https://github.com/vincekurtz/hydrax) by @vincekurtz
+- [mjviser](https://github.com/mujocolab/mjviser) by @kevinzakka, the mujocolab team, and contributors
+- [mjlab](https://github.com/mujocolab/mjlab) by @kevinzakka, the mujocolab team, and contributors
+
+We thank the authors and contributors of these projects for advancing the open-source robotics and MuJoCo tooling ecosystem.
