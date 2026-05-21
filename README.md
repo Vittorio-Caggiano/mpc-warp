@@ -118,5 +118,6 @@ This repository builds on ideas and inspiration from several outstanding open-so
 - [hydrax](https://github.com/vincekurtz/hydrax) by @vincekurtz
 - [mjviser](https://github.com/mujocolab/mjviser) by @kevinzakka, the mujocolab team, and contributors
 - [mjlab](https://github.com/mujocolab/mjlab) by @kevinzakka, the mujocolab team, and contributors
+- [locomujoco](https://github.com/robfiras/loco-mujoco) by @robfiras and contributors
 
 We thank the authors and contributors of these projects for advancing the open-source robotics and MuJoCo tooling ecosystem.
